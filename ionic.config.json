@@ -1,0 +1,7 @@
+{
+  "name": "baby-tracker",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular-standalone"
+}
