@@ -1,0 +1,83 @@
+# <корень-пет-проекта>/.omp/config.yml
+
+# 1. Изоляция от рабочих провайдеров
+# Отключаем корпоративные провайдеры в рамках этого проекта, 
+# чтобы исключить случайное списание средств с рабочих ключей.
+disabledProviders:
+  - anthropic
+  - openai
+  # - openai-codex
+  - aws-bedrock
+  - google-vertex
+  - azure-openai
+  - openrouter
+  - cursor
+  - github-copilot
+
+# 2. Распределение всех 10 встроенных ролей omp под Free Tier
+modelRoles:
+  # Архитектура и план (вызывается 1 раз на старте задачи — максимальный рычаг)
+  plan: google/gemini-3.8-flash:high
+
+  # Глубокое рассуждение и сложные баги (вызывается редко при эскалации)
+  slow: google/gemini-3.8-flash:high
+
+  # Основной рабочий цикл агента (каждый шаг, правка кода и вызов тулов)
+  default: google/gemini-3.8-flash:medium
+
+  # Воркеры и изолированные подзадачи (разгружаем лимит основной модели)
+  task: google/gemini-3.5-flash:medium
+
+  # Анализ скриншотов и UI (inspect_image)
+  vision: google/gemini-3.8-flash
+
+  # Задачи верстки, стилей и UI/UX
+  designer: google/gemini-3.8-flash:medium
+
+  # Фоновый советник-ревьюер
+  advisor: google/gemini-3.5-flash
+
+  # Фоновые вызовы и быстрый поиск (Lite-модель без тяжелого reasoning,
+  # чтобы не переполнять бюджет в 1024 токена на служебных запросах)
+  smol: google/gemini-3.5-flash-lite
+
+  # Генерация сообщений git-коммитов
+  commit: google/gemini-3.5-flash-lite
+
+  # Микро-операции (заголовки сессий, суммаризация, сжатие)
+  tiny: google/gemini-3.5-flash-lite
+
+# 3. Отключаем фонового советника по умолчанию для экономии RPM
+# (он читает каждый ход основного агента и удваивает расход запросов)
+advisor:
+  enabled: false
+  subagents: false
+
+# 4. Защита от лимитов Free Tier (10–15 RPM) и авто-фоллбэки
+retry:
+  enabled: true
+  modelFallback: true
+  fallbackOn: any
+  maxRetries: 8
+  baseDelayMs: 2500       # Пауза перед повтором при 429 Too Many Requests
+  maxDelayMs: 60000
+  fallbackRevertPolicy: cooldown-expiry # Возврат на основную модель после сброса минутного окна
+  fallbackChains:
+    # Если gemini-3.1-pro доступна в рамках дневного тестового лимита,
+    # можно поставить её первой в цепочке plan:
+    plan:
+      - google/gemini-3.1-pro:high
+      - google/gemini-3.8-flash:high
+      - google/gemini-3.5-flash:high
+    # При исчерпании минутного лимита 3.8-flash агент без остановки
+    # переключится на пул квот 3.5-flash и 2.5-flash:
+    default:
+      - google/gemini-3.8-flash:medium
+      - google/gemini-3.5-flash:medium
+      - google/gemini-2.5-flash
+    slow:
+      - google/gemini-3.8-flash:high
+      - google/gemini-3.5-flash:high
+    task:
+      - google/gemini-3.5-flash
+      - google/gemini-2.5-flash

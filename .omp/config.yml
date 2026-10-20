@@ -1,0 +1,123 @@
+
+# Oh My Pi — ChatGPT Plus
+# Optimized for OpenAI Codex OAuth
+
+modelProviderOrder:
+  - openai-codex
+
+# Пустой список не ограничивает модели.
+enabledModels: []
+
+modelRoles:
+  # Основная разработка, 500K контекста
+  default: openai-codex/gpt-6.1-sol:medium
+
+  # Быстрые и лёгкие запросы
+  smol: openai-codex/gpt-6-luna:low
+
+  # Сложная отладка и рефакторинг
+  slow: openai-codex/gpt-6-astra:high
+
+  # Архитектура и планирование
+  plan: openai-codex/gpt-6-astra:high
+
+  # Ревью решений
+  advisor: openai-codex/gpt-6-astra:high
+
+  # Анализ изображений и UI
+  vision: openai-codex/gpt-6.1-sol:medium
+  designer: openai-codex/gpt-6.1-sol:high
+
+  # Субагенты
+  task: openai-codex/gpt-6-luna:medium
+
+  # Вспомогательные операции
+  commit: openai-codex/gpt-6-luna:low
+  title: openai-codex/gpt-6-luna:low
+  tiny: openai-codex/gpt-6-luna:low
+  memory: openai-codex/gpt-6-luna:low
+
+cycleOrder:
+  - smol
+  - default
+  - slow
+
+# Резервные модели при ошибках
+retry:
+  enabled: true
+  modelFallback: true
+  fallbackRevertPolicy: cooldown-expiry
+
+  fallbackChains:
+    default:
+      - openai-codex/gpt-6-sol:medium
+      - openai-codex/gpt-5.6-sol:medium
+      - openai-codex/gpt-6-luna:high
+
+    smol:
+      - openai-codex/gpt-5.6-luna:low
+      - openai-codex/gpt-5.6-terra:low
+
+    slow:
+      - openai-codex/gpt-6.1-sol:high
+      - openai-codex/gpt-6-sol:high
+
+    plan:
+      - openai-codex/gpt-6.1-sol:high
+      - openai-codex/gpt-6-sol:high
+
+    advisor:
+      - openai-codex/gpt-6.1-sol:high
+      - openai-codex/gpt-6-sol:medium
+
+    task:
+      - openai-codex/gpt-5.6-luna:medium
+      - openai-codex/gpt-6-sol:low
+
+    vision:
+      - openai-codex/gpt-6-sol:medium
+
+    designer:
+      - openai-codex/gpt-6-astra:high
+
+    commit:
+      - openai-codex/gpt-5.6-luna:low
+
+    title:
+      - openai-codex/gpt-5.6-luna:low
+
+    tiny:
+      - openai-codex/gpt-5.6-luna:low
+
+    memory:
+      - openai-codex/gpt-5.6-luna:low
+
+# Встроенный Codex Code Mode для GPT-5.6
+providers:
+  openai-codex:
+    codeMode: auto
+
+# Advisor по умолчанию выключен:
+# включаем вручную для важных задач.
+advisor:
+  enabled: false
+  subagents: false
+
+# Управление длинными сессиями
+extendedContext: false
+
+contextPromotion:
+  enabled: false
+
+compaction:
+  enabled: true
+  asyncEnabled: true
+  midTurnEnabled: true
+  methodOrder:
+    - remote
+    - snapcompact
+    - handoff
+    - shake
+    - soft
+
+includeModelInPrompt: true
