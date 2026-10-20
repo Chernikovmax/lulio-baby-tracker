@@ -117,12 +117,12 @@ describe('Ядро трекера', () => {
     const { storage, wake } = await setup();
     const event = { id: 'гв', type: 'breastfeeding' as const, startTime: '2026-10-20T10:00:00Z', endTime: '2026-10-20T10:10:00Z', updatedAt: '2026-10-20T10:10:00Z', leftDurationSec: 600, rightDurationSec: 0, lastSide: 'left' as const };
     await storage.saveEvent(event);
-    expect(wake.nextBreastSide()).toBe('right');
-    wake.nextBreastSide.set('left');
+    expect(wake.selectedNextBreastSide()).toBe('right');
+    wake.selectedNextBreastSide.set('left');
     await storage.saveProfile(profile);
-    expect(wake.nextBreastSide()).toBe('left');
+    expect(wake.selectedNextBreastSide()).toBe('left');
     await storage.saveEvent({ ...event, id: 'новое гв', startTime: '2026-10-20T11:00:00Z', endTime: '2026-10-20T11:10:00Z' });
-    expect(wake.nextBreastSide()).toBe('right');
+    expect(wake.selectedNextBreastSide()).toBe('right');
     expect(wake.timeSinceLastFeedingSec()).toBe(3600);
   });
 
@@ -138,6 +138,100 @@ describe('Ядро трекера', () => {
     expect(leaps.currentCalendarWeek()).toBeNull();
     await storage.saveProfile({ ...profile, dueDate: '2025-01-01' });
     expect(leaps.currentWeek()).toBeGreaterThan(75);
+    expect(leaps.calendar().some(week => week.isCurrentWeek)).toBe(false);
+  });
+
+  it('считает календарный возраст от рождения и выбирает норму без поправки на ПДР', async () => {
+    const { storage, wake } = await setup();
+    await storage.saveProfile({ ...profile, birthDate: '2026-08-20', dueDate: '2026-10-20' });
+    expect(wake.ageDays()).toBe(61);
+    expect(wake.norm()).toMatchObject({ minWakeMinutes: 60, maxWakeMinutes: 80 });
+    await storage.saveProfile({ ...profile, birthDate: '2026-10-19', dueDate: '2026-08-01' });
+    expect(wake.ageDays()).toBe(1);
+    expect(wake.norm()).toMatchObject({ minWakeMinutes: 40, maxWakeMinutes: 60 });
+  });
+
+  it('находит последние завершённые сон и кормление среди несортированных событий, игнорируя будущее и сцеживание', async () => {
+    const { storage, wake } = await setup();
+    await storage.saveProfile({ ...profile, birthDate: '2026-10-01' });
+    await storage.saveEvent({ id: 'поздний сон', type: 'sleep', startTime: '2026-10-20T10:00:00Z', endTime: '2026-10-20T11:30:00Z', updatedAt: '2026-10-20T11:30:00Z', isNightSleep: false });
+    await storage.saveEvent({ id: 'ранний сон', type: 'sleep', startTime: '2026-10-20T08:00:00Z', endTime: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z', isNightSleep: false });
+    await storage.saveEvent({ id: 'будущий сон', type: 'sleep', startTime: '2026-10-20T12:30:00Z', endTime: '2026-10-20T13:00:00Z', updatedAt: '2026-10-20T13:00:00Z', isNightSleep: false });
+    await storage.saveEvent({ id: 'бутылочка', type: 'bottle', content: 'formula', volumeMl: 90, startTime: '2026-10-20T11:00:00Z', updatedAt: '2026-10-20T11:00:00Z' });
+    await storage.saveEvent({ id: 'позднее гв', type: 'breastfeeding', startTime: '2026-10-20T11:30:00Z', endTime: '2026-10-20T11:40:00Z', updatedAt: '2026-10-20T11:40:00Z', leftDurationSec: 0, rightDurationSec: 0, lastSide: 'right' });
+    await storage.saveEvent({ id: 'сцеживание', type: 'pumping', startTime: '2026-10-20T11:55:00Z', updatedAt: '2026-10-20T11:55:00Z', volumeMl: 50, side: 'both' });
+    await storage.saveEvent({ id: 'будущее кормление', type: 'solids', food: 'каша', startTime: '2026-10-20T12:30:00Z', updatedAt: '2026-10-20T12:30:00Z' });
+    expect(wake.lastSleepEnd()).toBe('2026-10-20T11:30:00Z');
+    expect(wake.lastFeedingTime()).toBe('2026-10-20T11:30:00Z');
+    expect(wake.timeSinceLastFeedingSec()).toBe(1800);
+  });
+
+  it('оставляет прогресс бодрствования выше единицы после превышения нормы', async () => {
+    const { storage, wake } = await setup();
+    await storage.saveProfile({ ...profile, birthDate: '2026-10-20' });
+    await storage.saveEvent({ id: 'сон', type: 'sleep', startTime: '2026-10-20T10:00:00Z', endTime: '2026-10-20T11:00:00Z', updatedAt: '2026-10-20T11:00:00Z', isNightSleep: false });
+    await vi.advanceTimersByTimeAsync(61 * 60_000);
+    expect(wake.normProgressRatio()).toBeCloseTo(121 / 60);
+  });
+
+  it('поддерживает независимые таймеры, паузу и отмену без создания события', async () => {
+    const { storage, timers } = await setup();
+    await timers.startSleep();
+    await timers.startBreastfeeding('left');
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(timers.sleepDurationSec()).toBe(1);
+    expect(timers.leftDurationSec()).toBe(1);
+    await timers.pauseBreastfeeding();
+    const pausedDuration = timers.leftDurationSec();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(timers.leftDurationSec()).toBe(pausedDuration);
+    await timers.switchBreast('right');
+    await vi.advanceTimersByTimeAsync(1_500);
+    await timers.cancelBreastfeeding();
+    expect(storage.events()).toEqual([]);
+    expect(timers.breastTimer()).toBeNull();
+    expect(timers.sleepTimer()).not.toBeNull();
+    await timers.cancelSleep();
+    expect(storage.events()).toEqual([]);
+  });
+
+  it('не меняет состояние работающего таймера при ошибке сохранения', async () => {
+    const { storage, timers } = await setup();
+    await timers.startSleep();
+    const before = timers.sleepTimer();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => { throw new Error('Ошибка хранилища'); });
+    await expect(timers.cancelSleep()).rejects.toThrow('Ошибка хранилища');
+    expect(timers.sleepTimer()).toEqual(before);
+    expect(storage.events()).toEqual([]);
+  });
+
+  it('считает номер календарной недели по точной UTC-границе от ПДР и размечает все 75 ячеек', async () => {
+    const { storage, leaps } = await setup();
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    await storage.saveProfile({ ...profile, dueDate: '2026-10-20' });
+    vi.setSystemTime(new Date('2026-10-19T23:59:59.999Z'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(leaps.currentWeek()).toBe(0);
+    expect(leaps.currentCalendarWeek()).toBeNull();
+    vi.setSystemTime(new Date('2026-10-20T00:00:00.000Z'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(leaps.currentWeek()).toBe(1);
+    vi.setSystemTime(new Date('2026-10-27T00:00:00.000Z'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(leaps.currentWeek()).toBe(2);
+    expect(leaps.calendar()).toHaveLength(75);
+    expect(leaps.calendar().filter(week => week.isCurrentWeek).map(week => week.weekNumber)).toEqual([2]);
+    expect(leaps.calendar()[0].weather).toBe('sunny');
+    expect(leaps.calendar()[13].weather).toBe('stormy');
+    expect(leaps.calendar()[17].weather).toBe('fussy');
+    expect(leaps.calendar()[19].weather).toBe('stormy');
+    expect(leaps.calendar()[20].weather).toBe('sunny');
+    expect(leaps.calendar()[3].weather).toBe('stormy');
+    expect(leaps.calendar()[4].weather).toBe('stormy');
+    vi.setSystemTime(new Date('2028-03-28T00:00:00.000Z'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(leaps.currentWeek()).toBeGreaterThan(75);
+    expect(leaps.currentCalendarWeek()).toBeNull();
     expect(leaps.calendar().some(week => week.isCurrentWeek)).toBe(false);
   });
 

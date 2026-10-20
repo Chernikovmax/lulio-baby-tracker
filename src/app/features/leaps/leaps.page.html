@@ -1,0 +1,50 @@
+<ion-header><ion-toolbar><ion-title>Скачки развития</ion-title></ion-toolbar></ion-header>
+<ion-content>
+  <div class="page">
+    <h1>Мир становится больше</h1>
+    @if (storage.isLoading()) { <p role="status">Загрузка профиля…</p> }
+    @else if (storage.error()) { <p role="alert">Не удалось загрузить профиль. Текущая фаза недоступна; календарь можно просматривать.</p> }
+    <section class="status" aria-labelledby="age-title">
+      <div class="status-heading">
+        @if (leaps.currentWeather(); as weather) { <ion-icon [name]="icons[weather]" aria-hidden="true" /> }
+        @let week = leaps.currentWeek();
+        <h2 id="age-title">@if (week !== null) {
+          @if (week > 0) { {{ week - 1 }} нед. от ПДР · {{ week }}-я неделя }
+          @else { До предполагаемой даты родов }
+        } @else { Возраст от ПДР }</h2>
+      </div>
+      <p>{{ banner() }}</p>
+      @if (leaps.currentWeather(); as weather) { <p class="phase">{{ weatherLabels[weather] }}</p> }
+      <p class="hint">Сроки считаются от предполагаемой даты родов (ПДР), а не от дня рождения.</p>
+    </section>
+    <section aria-labelledby="calendar-title">
+      <div class="heading"><h2 id="calendar-title">Календарь · 1–75 недель</h2>
+        @if (leaps.currentCalendarWeek(); as current) { <ion-button fill="clear" (click)="selectedWeek.set(current.weekNumber)">Текущая неделя</ion-button> }
+      </div>
+      <p class="hint">Выберите неделю, чтобы прочитать о ближайшем или текущем скачке.</p>
+      <div #timeline class="timeline" role="group" aria-label="Недели развития от ПДР">
+        @for (week of leaps.calendar(); track week.weekNumber) {
+          <button type="button" [attr.data-week]="week.weekNumber" [class.selected]="selectedWeek() === week.weekNumber" [class.current]="week.isCurrentWeek"
+            [attr.aria-pressed]="selectedWeek() === week.weekNumber" [attr.aria-current]="week.isCurrentWeek ? 'date' : null"
+            [attr.aria-label]="'Неделя ' + week.weekNumber + ': ' + weatherLabels[week.weather]" (click)="selectedWeek.set(week.weekNumber)">
+            <span>{{ week.weekNumber }}</span><ion-icon [name]="icons[week.weather]" aria-hidden="true" /><small>{{ week.isCurrentWeek ? 'Сейчас' : 'нед.' }}</small>
+          </button>
+        }
+      </div>
+      <ul class="legend"><li><ion-icon name="thunderstorm-outline" aria-hidden="true" />Кризисная</li><li><ion-icon name="cloudy-outline" aria-hidden="true" />Беспокойная</li><li><ion-icon name="sunny-outline" aria-hidden="true" />Спокойная</li></ul>
+    </section>
+    <section class="leap-details" aria-labelledby="leap-title">
+      <p class="phase">Неделя {{ selectedWeek() }} · {{ weatherLabels[selected().weather] }}</p>
+      @if (selected().weather === 'sunny') { <p>Спокойная неделя по календарю. Ниже — ближайший предстоящий скачок.</p> }
+      @let leap = selectedLeap();
+      <h2 id="leap-title">{{ leap.title }}</h2>
+      <p class="hint">Ориентировочная фаза: недели {{ leap.startWeek }}–{{ leap.endWeek }} · Пик: {{ leap.peakWeek }}-я неделя</p>
+      <ion-accordion-group [multiple]="true" [value]="['happens']">
+        <ion-accordion value="happens"><ion-item slot="header"><ion-label>Что происходит с малышом</ion-label></ion-item><div slot="content" class="accordion-content"><p>{{ leap.whatHappens }}</p></div></ion-accordion>
+        <ion-accordion value="cues"><ion-item slot="header"><ion-label>Признаки кризиса</ion-label></ion-item><div slot="content" class="accordion-content"><ul>@for (cue of leap.cues; track cue) { <li>{{ cue }}</li> }</ul></div></ion-accordion>
+        <ion-accordion value="skills"><ion-item slot="header"><ion-label>Новые навыки</ion-label></ion-item><div slot="content" class="accordion-content"><ul>@for (skill of leap.newSkills; track skill) { <li>{{ skill }}</li> }</ul></div></ion-accordion>
+      </ion-accordion-group>
+    </section>
+    <aside class="notice" aria-label="О календаре развития">{{ notice }}</aside>
+  </div>
+</ion-content>

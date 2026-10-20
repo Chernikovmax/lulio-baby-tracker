@@ -1,488 +1,406 @@
-# [SPEC.md](http://SPEC.md) — Техническая спецификация приложения «Трекер сна, кормлений и скачков роста»
+# SPEC.md — Technical Specification: Baby Sleep, Feeding & Developmental Leaps Tracker
 
-## 1. Назначение приложения
+## 1. Application Purpose
 
-Мобильное приложение для родителей младенцев (от рождения до 1+ года), повторяющее ключевой функционал и UX приложения «Скачки роста» (Дневник малыша):
+A mobile application for parents of infants (from birth through 12+ months), reproducing the core functionality and user experience of the **“Developmental Leaps” (Baby Diary)** app:
 
-- Мгновенный трекинг сна, грудного вскармливания (Л/П грудь), бутылочки, прикорма, сцеживания, подгузников и антропометрии (вес/рост) одной рукой.
+- **One-handed, instant tracking** of sleep, breastfeeding (left/right breast), bottle feeding, solid foods, pumping, diaper changes, and anthropometric measurements (weight/length).
+- **Live wake-window calculation** with age-based reference ranges and overtiredness warnings.
+- **Automatic suggestion of which breast to offer next.**
+- **Visual 24-hour sleep and feeding patterns** over 7, 14, or 30 days.
+- **Calendar of 10 developmental leaps**, calculated strictly from the estimated due date (EDD), not the actual birth date.
+- **Offline-first operation**, with optional real-time synchronization between both parents' phones via Supabase Realtime.
 
-- Живой расчет текущего Окна Бодрствования (ВБ) с индикацией возрастных норм и предупреждением о перегуле.
+## 2. Architecture and File Structure (`src/app/`)
 
-- Автоматическая подсказка следующей груди при кормлении.
-
-- Визуальный 24-часовой паттерн снов и кормлений за 7/14/30 дней.
-
-- Календарь 10 скачков роста (расчет строго по ПДР).
-
-- Offline-First работа с опциональной синхронизацией между телефонами мамы и папы в реальном времени (Supabase Realtime).
-
----
-
-## 2. Архитектура и файловая структура (`src/app/`)
-
-\`\`\`text
-
+```text
 src/app/
-
 ├── core/
-
 │   ├── models/
-
-│   │   ├── tracker.models.ts        # Интерфейсы профиля, событий, активных таймеров и Type Guards
-
-│   │   └── leap.models.ts           # Интерфейсы для 10 скачков роста и календаря недель
-
+│   │   ├── tracker.models.ts        # Profile, event, active timer interfaces and type guards
+│   │   └── leap.models.ts           # Interfaces for the 10 developmental leaps and weekly calendar
 │   ├── constants/
-
-│   │   ├── wake-norms.const.ts      # Возрастные нормы ВБ и суточного сна (0–12+ мес)
-
-│   │   └── wonder-weeks.const.ts    # Полные статические данные 10 скачков роста (недели 1–75)
-
+│   │   ├── wake-norms.const.ts      # Age-based wake-window and daily sleep norms (0–12+ months)
+│   │   └── wonder-weeks.const.ts    # Complete static data for 10 leaps (weeks 1–75)
 │   └── services/
-
-│       ├── clock.service.ts         # Единый Zoneless-генератор тиков времени + visibilitychange
-
-│       ├── storage.service.ts       # Хранилище на базе resource() + @capacitor/preferences + JSON-бэкап
-
-│       ├── sync.service.ts          # Опциональная синхронизация между родителями (Supabase Realtime)
-
-│       ├── active-timer.service.ts  # Управление живыми таймерами Сна и ГВ (Левая/Правая) через timestamps
-
-│       ├── wake-window.service.ts   # Расчет текущего ВБ, норм, времени с кормления и linkedSignal груди
-
-│       └── leaps.service.ts         # Расчет недели от ПДР и фаз скачков роста (грозовые/солнечные)
-
+│       ├── clock.service.ts         # Single zoneless clock ticker + visibilitychange handling
+│       ├── storage.service.ts       # Storage using resource() + @capacitor/preferences + JSON backups
+│       ├── sync.service.ts          # Optional parent-to-parent synchronization (Supabase Realtime)
+│       ├── active-timer.service.ts  # Timestamp-based live sleep and breastfeeding (left/right) timers
+│       ├── wake-window.service.ts   # Wake-window calculations, norms, time since feeding, breast linkedSignal
+│       └── leaps.service.ts         # EDD-based week and leap-phase calculations (stormy/sunny)
 ├── shared/
-
 │   ├── components/
-
-│   │   ├── live-status-banner/      # Главный виджет в шапке: текущее ВБ/Сон, прогресс-бар нормы, инфо о ГВ
-
-│   │   ├── quick-action-dock/       # Нижняя панель крупных кнопок запуска: Сон, ГВ, Бутылочка, Подгузник
-
+│   │   ├── live-status-banner/      # Main header widget: wake window/sleep, norm progress, breastfeeding info
+│   │   ├── quick-action-dock/       # Large bottom actions: Sleep, Breastfeed, Bottle, Diaper
 │   │   └── modals/
-
-│   │       ├── sleep-modal/         # Bottom-sheet модалка сна (живой таймер + ручной ввод на Signal Forms)
-
-│   │       ├── feeding-modal/       # Bottom-sheet модалка еды (двойной секундомер Л/П + Бутылочка с чипами +30/+60 мл)
-
-│   │       ├── diaper-modal/        # Bottom-sheet модалка подгузника (Мокрый / Грязный / Смешанный)
-
-│   │       └── growth-modal/        # Модалка ввода веса, роста и окружности головы
-
+│   │       ├── sleep-modal/         # Sleep bottom sheet (live timer + manual entry using Signal Forms)
+│   │       ├── feeding-modal/       # Feeding bottom sheet (dual left/right timers + bottle +30/+60 mL chips)
+│   │       ├── diaper-modal/        # Diaper bottom sheet (Wet / Dirty / Mixed)
+│   │       └── growth-modal/        # Weight, length/height and head circumference entry
 │   └── pipes/
-
-│       └── duration-format.pipe.ts  # Форматирование секунд в "1 ч 35 мин" или "04:12"
-
+│       └── duration-format.pipe.ts  # Format seconds as "1 h 35 min" or "04:12"
 └── features/
+    ├── tracker/                    # Tab 1 (/tabs/tracker): date navigation, wake status, daily summary, event feed
+    ├── stats/                      # Tab 2 (/tabs/stats): 24h patterns, average wake windows, weight/length charts
+    ├── leaps/                      # Tab 3 (/tabs/leaps): EDD-based week timeline (clouds/suns) and leap details
+    └── settings/                   # Tab 4 (/tabs/settings): baby profile (Signal Forms), export/import, sync
+```
 
-    ├── tracker/                     # Вкладка 1 (/tabs/tracker): Календарь дней, Статус ВБ, Сводка дня, Лента событий
+## 3. Mapping the Reference App UI to Ionic v9 Components
 
-    ├── stats/                       # Вкладка 2 (/tabs/stats): Суточный паттерн 24ч, среднее ВБ, графики веса/роста
-
-    ├── leaps/                       # Вкладка 3 (/tabs/leaps): Шкала недель от ПДР (тучки/солнышки) и описание скачков
-
-    └── settings/                    # Вкладка 4 (/tabs/settings): Профиль малыша (Signal Forms), экспорт/импорт, синк
-
-\`\`\`
-
----
-
-## 3. Маппинг интерфейса «Скачков роста» на компоненты Ionic v9
-
-| Элемент интерфейса | Поведение | Компоненты `@ionic/angular/standalone` |
-
+| UI element | Required behavior | `@ionic/angular/standalone` components |
 |---|---|---|
+| **Bottom navigation** | Four tabs: **Today**, **Statistics**, **Leaps**, **Profile** | `IonTabs`, `IonTabBar`, `IonTabButton`, `IonIcon`, `IonLabel` |
+| **Header and date navigation** | Baby's name and age; swipe or arrows to navigate days; quick return to **Today** | `IonHeader`, `IonToolbar`, `IonButtons`, `IonButton`, `IonDatetimeButton` |
+| **Live status banner (wake window/sleep)** | Status such as **“Awake: 1 h 35 min (normal: 1 h 20 min – 1 h 50 min)”**, color-coded progress, time since last feeding, **“Next: Right”** badge | `IonCard`, `IonCardContent`, `IonProgressBar`, `IonBadge`, `IonText` |
+| **Quick-action dock** | Thumb-friendly buttons at least 56 px high, positioned above the tab bar. An active timer produces a pulsating elapsed-time badge on its button | `IonGrid`, `IonRow`, `IonCol`, `IonButton`, `IonBadge`, `IonRippleEffect` |
+| **Timer/data-entry bottom sheets** | Slide up to approximately half screen or 85–90% screen height | `IonModal` with `breakpoints="[0, 0.55, 0.9]"` and `initialBreakpoint="0.55"` |
+| **Daily timeline/event feed** | Chip filters (**All**, **Sleep**, **Feeding**, **Diaper**). Display the selected day's events in chronological order, top to bottom. Gray separators between sleep sessions show the actual wake-window duration. Swipe left to delete an event | `IonSegment`, `IonSegmentButton`, `IonList`, `IonItemSliding`, `IonItem`, `IonItemOptions`, `IonItemOption` |
+| **24-hour daily pattern** | One 24h band per day for 7/14/30 days; blue blocks indicate sleep and dots indicate feedings | `IonSegment` for the range + custom SVG/CSS Grid bands |
+| **Developmental leaps calendar** | Horizontal timeline covering weeks 1–75 with cloud/sun icons and expanded descriptions of difficult phases and emerging skills | Horizontal flex week container + `IonAccordionGroup`, `IonAccordion` |
 
-| \*\*Нижняя навигация\*\* | 4 вкладки: \*Сегодня\*, \*Статистика\*, \*Скачки\*, \*Профиль\* | `IonTabs`, `IonTabBar`, `IonTabButton`, `IonIcon`, `IonLabel` |
+## 4. Data Models (`src/app/core/models/`)
 
-| \*\*Шапка и переключатель дней\*\* | Имя малыша, возраст, свайп/стрелки по дням + быстрый возврат на «Сегодня» | `IonHeader`, `IonToolbar`, `IonButtons`, `IonButton`, `IonDatetimeButton` |
+### 4.1 `tracker.models.ts`
 
-| \*\*Баннер живого статуса (ВБ и Сон)\*\* | Плашка состояния: \*«Бодрствует: 1 ч 35 мин (норма: 1ч 20м – 1ч 50м)»\* с цветной шкалой, время с прошлого кормления и бейдж \*«Следующая: Правая»\* | `IonCard`, `IonCardContent`, `IonProgressBar`, `IonBadge`, `IonText` |
-
-| \*\*Док быстрых действий\*\* | Крупные кнопки высотой от 56px над таб-баром под большой палец. Если таймер запущен — на кнопке пульсирует бейдж с текущим временем | `IonGrid`, `IonRow`, `IonCol`, `IonButton`, `IonBadge`, `IonRippleEffect` |
-
-| \*\*Шторки таймеров и ввода\*\* | Выезжают снизу на пол-экрана или на 85% высоты | `IonModal` с `breakpoints="[0, 0.55, 0.9]"` и `initialBreakpoint="0.55"` |
-
-| \*\*Хронология (Лента дня)\*\* | Фильтр по чипам (\*Все\*, \*Сон\*, \*Еда\*, \*Подгузник\*). События за день сверху вниз. Между снами — серые разделители с фактическим временем ВБ. Свайп влево удаляет запись | `IonSegment`, `IonSegmentButton`, `IonList`, `IonItemSliding`, `IonItem`, `IonItemOptions`, `IonItemOption` |
-
-| \*\*Суточный паттерн 24ч\*\* | Полосы по 24 часа за 7/14/30 дней: синие блоки — сон, точки — кормления | `IonSegment` (период) + кастомный SVG/CSS-Grid компонент суточных полос |
-
-| \*\*Календарь скачков роста\*\* | Горизонтальная шкала недель (1–75) с иконками тучек/солнышек + развернутое описание кризиса и новых навыков | Горизонтальный flex-контейнер недель + `IonAccordionGroup`, `IonAccordion` |
-
----
-
-## 4. Модели данных (`src/app/core/models/`)
-
-### 4.1. `tracker.models.ts`
-
-\`\`\`typescript
-
+```typescript
 export type EventType = 'sleep' | 'breastfeeding' | 'bottle' | 'solids' | 'pumping' | 'diaper' | 'growth';
-
 export type BreastSide = 'left' | 'right';
-
 export type DiaperState = 'wet' | 'dirty' | 'mixed';
-
 export type BottleContent = 'formula' | 'breast_milk' | 'water';
-
 export type WakeStatusLevel = 'sleeping' | 'optimal' | 'approaching' | 'overtired';
 
 export interface BabyProfile {
-
   id: string;
-
   name: string;
-
-  birthDate: string; // ISO Date — для расчета фактического возраста и норм ВБ
-
-  dueDate: string;   // ISO Date (ПДР) — СТРОГО для расчета календаря скачков роста
-
+  birthDate: string; // ISO date — actual age and wake-window norms
+  dueDate: string;   // ISO date (EDD) — STRICTLY for developmental leap calculations
   gender: 'boy' | 'girl';
-
 }
 
 export interface BaseEvent {
-
   id: string;
-
   type: EventType;
-
   startTime: string; // ISO timestamp
-
   endTime?: string;  // ISO timestamp
-
   note?: string;
-
   updatedAt: string;
-
 }
 
 export interface SleepEvent extends BaseEvent {
-
   type: 'sleep';
-
   endTime: string;
-
   isNightSleep: boolean;
-
   tags?: ('crib' | 'stroller' | 'arms' | 'co_sleeping')[];
-
 }
 
 export interface BreastfeedingEvent extends BaseEvent {
-
   type: 'breastfeeding';
-
   endTime: string;
-
   leftDurationSec: number;
-
   rightDurationSec: number;
-
   lastSide: BreastSide;
-
 }
 
 export interface BottleEvent extends BaseEvent {
-
   type: 'bottle';
-
   content: BottleContent;
-
   volumeMl: number;
-
 }
 
 export interface DiaperEvent extends BaseEvent {
-
   type: 'diaper';
-
   state: DiaperState;
-
 }
 
 export interface GrowthEvent extends BaseEvent {
-
   type: 'growth';
-
   weightKg?: number;
-
   heightCm?: number;
-
   headCm?: number;
-
 }
 
+// Also include SolidsEvent and PumpingEvent as required by Section 6.
 export type AnyTrackerEvent =
-
   | SleepEvent
-
   | BreastfeedingEvent
-
   | BottleEvent
-
   | DiaperEvent
-
   | GrowthEvent;
 
 export interface ActiveSleepTimer {
-
   startedAt: string;
-
   isNightSleep: boolean;
-
 }
 
 export interface ActiveBreastTimer {
-
   startedAt: string;
-
   activeSide: BreastSide | null;
-
   currentSideStartedAt: string | null;
-
   accumulatedLeftSec: number;
-
   accumulatedRightSec: number;
-
   lastActiveSide: BreastSide;
-
 }
 
 export interface ActiveTimerState {
-
   sleepTimer: ActiveSleepTimer | null;
-
   breastTimer: ActiveBreastTimer | null;
-
 }
+```
 
-\`\`\`
+**Important:** The union above reproduces the model excerpt in Section 4.1. The implemented core contract in Section 6 extends this union to include `SolidsEvent` and `PumpingEvent`; agents must honor the more complete contract when implementing or modifying the model.
 
-### 4.2. `leap.models.ts`
+### 4.2 `leap.models.ts`
 
-\`\`\`typescript
-
+```typescript
 export type WeekWeather = 'sunny' | 'fussy' | 'stormy';
 
 export interface WonderLeap {
-
-  leapNumber: number;         // 1..10
-
-  title: string;              // Например: "Скачок 4: Мир событий"
-
-  peakWeek: number;           // Неделя пика от ПДР (5, 8, 12, 19, 26, 37, 46, 55, 64, 75)
-
-  startWeek: number;          // Начало беспокойной фазы
-
-  endWeek: number;            // Окончание беспокойной фазы
-
-  whatHappens: string;        // Описание изменений в восприятии малыша
-
-  cues: string[];             // Признаки скачка (капризы, частые прикладывания, регресс сна)
-
-  newSkills: string[];        // Навыки, которые появляются после скачка
-
+  leapNumber: number;  // 1..10
+  title: string;       // Example: "Leap 4: The World of Events"
+  peakWeek: number;    // Peak week relative to EDD (5, 8, 12, 19, 26, 37, 46, 55, 64, 75)
+  startWeek: number;   // Start of the unsettled phase
+  endWeek: number;     // End of the unsettled phase
+  whatHappens: string; // Description of changes in the baby's perception
+  cues: string[];      // Signs (fussiness, frequent feeding, sleep regression)
+  newSkills: string[]; // Skills that may emerge after the leap
 }
 
 export interface CalendarWeekItem {
-
-  weekNumber: number;         // 1..75
-
+  weekNumber: number;   // 1..75
   weather: WeekWeather;
-
   leapNumber?: number;
-
   isCurrentWeek: boolean;
-
 }
+```
 
-\`\`\`
+## 5. Core Business Logic and Reference Angular v22 Patterns
 
----
+### 5.1 Age-Based Wake-Window Reference Ranges (`wake-norms.const.ts`)
 
-## 5. Ключевая бизнес-логика и эталонные паттерны Angular v22
+| Age | Age in days | Wake window |
+|---|---:|---:|
+| 0–1 month | 0–30 | 40–60 min |
+| 1–2 months | 31–60 | 50–75 min |
+| 2–3 months | 61–90 | 60–80 min (1 h – 1 h 20 min) |
+| 3–4 months | 91–120 | 80–110 min (1 h 20 min – 1 h 50 min) |
+| 4–5 months | 121–150 | 105–135 min (1 h 45 min – 2 h 15 min) |
+| 5–6 months | 151–180 | 120–150 min (2 h – 2 h 30 min) |
+| 6–8 months | 181–240 | 150–180 min (2 h 30 min – 3 h) |
+| 9–12 months | 241–365 | 180–240 min (3 h – 4 h) |
+| 12+ months | 366+ | 210–300 min (3 h 30 min – 5 h) |
 
-### 5.1. Нормы Окон Бодрствования (ВБ) по возрасту (`wake-norms.const.ts`)
+**`WakeWindowService` status colors and thresholds:**
 
-- \*\*0–1 мес (0–30 дн):\*\* 40–60 мин
+- `optimal` (**green / success**): current wake-window duration is **less than** `minWakeMinutes`.
+- `approaching` (**yellow / warning**): duration is **between** `minWakeMinutes` and `maxWakeMinutes` — “Time to prepare for sleep.”
+- `overtired` (**red / danger**): duration is **greater than** `maxWakeMinutes` — “Risk of overtiredness.”
 
-- \*\*1–2 мес (31–60 дн):\*\* 50–75 мин
+### 5.2 Reference Zoneless Timer Pattern (`ClockService`)
 
-- \*\*2–3 мес (61–90 дн):\*\* 60–80 мин (1 ч 00 м – 1 ч 20 м)
+All live counters must subscribe to a single `ClockService.now()` signal. The following is the translated source example; its Angular decorator must be validated against Angular v22 before use (see Implementation Notes).
 
-- \*\*3–4 мес (91–120 дн):\*\* 80–110 мин (1 ч 20 м – 1 ч 50 м)
-
-- \*\*4–5 мес (121–150 дн):\*\* 105–135 мин (1 ч 45 м – 2 ч 15 м)
-
-- \*\*5–6 мес (151–180 дн):\*\* 120–150 мин (2 ч 00 м – 2 ч 30 м)
-
-- \*\*6–8 мес (181–240 дн):\*\* 150–180 мин (2 ч 30 м – 3 ч 00 м)
-
-- \*\*9–12 мес (241–365 дн):\*\* 180–240 мин (3 ч 00 м – 4 ч 00 м)
-
-- \*\*12+ мес (366+ дн):\*\* 210–300 мин (3 ч 30 м – 5 ч 00 м)
-
-\*\*Цветовая логика `WakeWindowService`:\*\*
-
-- `optimal` (зеленый `success`): текущее ВБ меньше `minWakeMinutes`.
-
-- `approaching` (желтый `warning`): текущее ВБ между `minWakeMinutes` и `maxWakeMinutes` («Пора готовиться ко сну»).
-
-- `overtired` (красный `danger`): текущее ВБ больше `maxWakeMinutes` («Риск перегула»).
-
-### 5.2. Эталонный паттерн Zoneless-таймера (`ClockService`)
-
-Все живые счетчики в приложении подписываются на единый сигнал `[ClockService.now](http://ClockService.now)()`:
-
-\`\`\`typescript
-
+```typescript
 import { Service, signal, DestroyRef, inject } from '@angular/core';
-
 import { DOCUMENT } from '@angular/common';
 
 @Service()
-
 export class ClockService {
-
   private readonly destroyRef = inject(DestroyRef);
-
   private readonly document = inject(DOCUMENT);
-
-  readonly now = signal&lt;number&gt;([Date.now](http://Date.now)());
+  readonly now = signal<number>(Date.now());
 
   constructor() {
-
-    const id = setInterval(() =&gt; [this.now](http://this.now).set([Date.now](http://Date.now)()), 1000);
-
-    const onVisible = () =&gt; {
-
-      if (this.document.visibilityState === 'visible') [this.now](http://this.now).set([Date.now](http://Date.now)());
-
+    const id = setInterval(() => this.now.set(Date.now()), 1000);
+    const onVisible = () => {
+      if (this.document.visibilityState === 'visible') this.now.set(Date.now());
     };
 
     this.document.addEventListener('visibilitychange', onVisible);
-
-    this.destroyRef.onDestroy(() =&gt; {
-
+    this.destroyRef.onDestroy(() => {
       clearInterval(id);
-
       this.document.removeEventListener('visibilitychange', onVisible);
-
     });
-
   }
-
 }
+```
 
-\`\`\`
+### 5.3 Reference Signal Forms and `linkedSignal` Pattern (Input Modals)
 
-### 5.3. Эталонный паттерн Signal Forms и `linkedSignal` (для модалок ввода)
+**Do not use `ReactiveFormsModule` in input modals.** Use `form()` from `@angular/forms/signals` instead.
 
-В модалках запрещено использовать `ReactiveFormsModule`. Используется `form()` из `@angular/forms/signals`:
-
-\`\`\`typescript
-
+```typescript
 import { Component, inject, signal, linkedSignal } from '@angular/core';
-
 import { form, FormField, required, min, max } from '@angular/forms/signals';
-
 import { WakeWindowService } from '../../../core/services/wake-window.service';
-
 import { BottleContent } from '../../../core/models/tracker.models';
 
-// Автоматический выбор стартовой груди (противоположной от прошлого кормления)
-
-readonly selectedSide = linkedSignal(() =&gt;
-
+// Automatically select the starting breast: opposite of the previous feeding.
+readonly selectedSide = linkedSignal(() =>
   this.wakeWindowService.lastUsedBreastSide() === 'left' ? 'right' : 'left'
-
 );
 
-// Signal Form для ввода бутылочки
-
+// Signal Form model for bottle feeding.
 readonly bottleModel = signal({
-
   content: 'breast_milk' as BottleContent,
-
   volumeMl: 90,
-
   startTime: new Date().toISOString(),
-
   note: ''
-
 });
 
-readonly bottleForm = form(this.bottleModel, (path) =&gt; {
-
+readonly bottleForm = form(this.bottleModel, (path) => {
   required(path.volumeMl);
-
   min(path.volumeMl, 5);
-
   max(path.volumeMl, 500);
-
 });
+```
 
-\`\`\`
+### 5.4 Developmental Leaps Calendar Algorithm (`LeapsService`)
 
-### 5.4. Алгоритм Календаря Скачков Роста (`LeapsService`)
+1. The reference date is **strictly `profile.dueDate` (EDD)**, **never** the actual birth date.
+2. Current week number: `Math.floor((now - dueDateMs) / (7 * 24 * 60 * 60 * 1000)) + 1`.
+3. The 10 classic leaps peak in weeks **5, 8, 12, 19, 26, 37, 46, 55, 64, and 75**.
+4. Each calendar week from 1 through 75 is marked `stormy` (leap in progress), `fussy` (the week before the peak of a long leap), or `sunny` (a calmer skill-consolidation week). The precise precedence rules are in Section 6.
 
-- Базовая точка отсчета — \*\*строго `profile.dueDate` (ПДР)\*\*, а не фактическая дата рождения.
+### 5.5 Requirements by App Tab
 
-- Номер текущей недели = `Math.floor((now - dueDateMs) / (7 * 24 * 60 * 60 * 1000)) + 1`.
+#### Today (`/tabs/tracker`)
 
-- 10 классических скачков происходят на пиковых неделях: \*\*5, 8, 12, 19, 26, 37, 46, 55, 64, 75\*\*.
+- Date selector in the header.
+- `LiveStatusBannerComponent`: large live timer showing the current wake window or active sleep; progress toward age-specific wake-window limits; time since last feeding; recommended breast badge (L/R).
+- `QuickActionDockComponent`: four prominent start buttons — **Sleep**, **Breastfeeding**, **Bottle**, **Diaper**.
+- Summary card for the selected calendar day: total daytime and nighttime sleep, feeding count and total bottle volume in mL, and diaper-change count.
+- Filterable daily event feed, automatically displaying **“Wake window: X h Y min”** between adjacent completed sleep sessions.
 
-- Каждая неделя от 1 до 75 получает статус `stormy` (идет скачок), `fussy` (неделя перед пиком длинного скачка) или `sunny` (спокойная неделя освоения навыков).
+#### Statistics (`/tabs/stats`)
 
-### 5.5. Требования к вкладкам приложения
+- Period selector: **7 days / 14 days / 30 days**.
+- Visual **24-hour daily pattern**: one row or column per day spanning 00:00–24:00, with clearly visible night/day sleep intervals and feeding markers.
+- Average-value cards for the selected period: **average wake-window duration**, **average nighttime sleep**, and **average daytime sleep**.
+- Weight and length/height measurement history with changes over time.
 
-1. \*\*Таб «Сегодня» (`/tabs/tracker`):\*\*
+#### Leaps (`/tabs/leaps`)
 
-   - Переключатель даты в шапке.
+- Horizontally scrolling calendar of **weeks 1–75**, automatically focused on the current EDD-based week.
+- Detail card for the current or selected leap: **What happens**, **Signs**, **New skills**.
 
-   - `LiveStatusBannerComponent`: крупный таймер текущего ВБ или активного Сна, прогресс-бар нормы ВБ, время с последнего кормления и плашка рекомендуемой груди (`Л` / `П`).
+#### Profile (`/tabs/settings`)
 
-   - `QuickActionDockComponent`: 4 крупные кнопки запуска (`Сон`, `ГВ`, `Бутылочка`, `Подгузник`).
+- Edit baby's name, birth date, and EDD using **Signal Forms**.
+- **Export backup to JSON** and **Import from JSON** buttons.
+- Family synchronization configuration: **Supabase URL**, **Anon Key**, and shared **`family_id`** for real-time timer sync between parents' devices.
 
-   - Карточка сводки за выбранные сутки: суммарный дневной и ночной сон, количество кормлений и суммарный объем мл, количество смен подгузников.
+## 6. Implemented Core Contracts
 
-   - Лента событий дня с фильтрацией по чипам и автоматическим выводом плашек `ВБ: X ч Y мин` между соседними завершенными снами.
+**This section documents existing behavior. Preserve these contracts when extending the application. Where the earlier illustrative models differ, these implemented contracts take precedence.**
 
-2. \*\*Таб «Статистика» (`/tabs/stats`):\*\*
+### 6.1 `StorageService`
 
-   - Переключатель периода: `7 дней` / `14 дней` / `30 дней`.
+- Reads persisted data using `resource()` and `@capacitor/preferences` under the key **`baby-tracker.v1`**.
+- The stored snapshot contains **`profile`**, **`events`**, and **`activeTimers`**.
+- Callers may await `ready()` before operations. Load state is exposed through `isLoading()` and `error()`.
+- `saveProfile()`, `saveEvent()`, `deleteEvent()`, and transactional `update()` return `Promise<void>`.
+- Write operations are serialized. Reactive signals update **only after a successful persistent write**; write errors propagate to callers.
+- `saveEvent()` inserts or replaces an event by `id`. **Array order does not establish chronological order.**
+- `exportBackup()` returns JSON containing `version: 1` and `exportedAt`.
+- `importBackup(json)` validates the **entire document before writing**, then completely replaces profile, events, and timers. Reject corrupt documents, unsupported versions, duplicate IDs, and invalid dates **without modifying persisted data**.
 
-   - Визуальный 24-часовой график («Суточный паттерн»): колонки или строки по дням от `00:00` до `24:00`, где наглядно видны интервалы ночного/дневного сна и точки кормлений.
+### 6.2 Additional Events and Runtime Type Guards
 
-   - Карточки средних значений за выбранный период (среднее ВБ, средний ночной сон, средний дневной сон).
+- In addition to the Section 4 models, the core supports `SolidsEvent` with **`food`** and optional **`amountGrams`**, and `PumpingEvent` with **`volumeMl`** and **`side: 'left' | 'right' | 'both'`**.
+- **Both types are members of `AnyTrackerEvent`.**
+- Exported type guards accept `unknown` and validate all required and optional fields.
 
-   - История замеров веса и роста с динамикой прибавки.
+### 6.3 `ActiveTimerService`
 
-3. \*\*Таб «Скачки» (`/tabs/leaps`):\*\*
+- Exposes `startSleep()`, `stopSleep()`, `cancelSleep()`, `startBreastfeeding(side)`, `switchBreast(side)`, `pauseBreastfeeding()`, `stopBreastfeeding()`, and `cancelBreastfeeding()`.
+- Switching to a breast **resumes** breastfeeding after a pause.
+- Sleep and breastfeeding timers operate **independently**.
+- Stopping a timer **atomically creates an event and clears the active timer**; canceling it clears the timer **without creating an event**.
+- Calling a stop method again after completion returns `null`.
+- Timers use ISO timestamps and elapsed-time differences only. Accumulated breastfeeding durations retain **fractional seconds between side switches**. Displayed and final durations are **floored to whole seconds**.
+- The clock updates when the tab becomes visible again; the interval and event listener are removed on service destruction.
 
-   - Горизонтальный скролл-календарь недель от 1 до 75 с автофокусом на текущей неделе от ПДР.
+### 6.4 `WakeWindowService`
 
-   - Детальная карточка текущего/выбранного скачка (Что происходит, Признаки, Новые навыки).
+- Exposes `wakeDurationSec()`, `norm()`, `normProgressRatio()`, `status()`, `isOvertired()`, `timeSinceLastFeedingSec()`, `lastUsedBreastSide()`, and a writable **`selectedNextBreastSide`**.
+- With no relevant sleep or feeding history, the corresponding duration is **`null`**, not an invented time since midnight.
+- During active sleep, wake-window duration is **zero**.
+- `normProgressRatio()` is **not capped at 1**, so overtiredness can be represented accurately.
+- Age for wake-window norms is calculated in **calendar days since the actual birth date**.
+- Time since last feeding is measured from the **start** of the most recent **breastfeeding, bottle feeding, or solid-food event**. **Pumping is not a feeding.**
+- Recommended next breast is the **opposite** of the last breast used in the most recently **completed** breastfeeding event. Default to **left** if there is no history.
+- Preserve a user's manual next-breast selection across unrelated changes; reset it when the last breastfeeding event changes.
 
-4. \*\*Таб «Профиль» (`/tabs/settings`):\*\*
+### 6.5 `LeapsService`
 
-   - Редактирование имени, даты рождения и ПДР на базе Signal Forms.
+- Interpret EDD as **00:00 UTC** and apply the exact Section 5.4 week formula **without clamping** the week number.
+- If the current date is before EDD or after week 75, there is **no current calendar cell**.
+- The calendar contains **exactly 75 weeks**.
+- Within an indicated leap phase, weeks are `stormy`, **except** the week immediately before the peak of a phase lasting **three or more weeks**, which is `fussy`.
+- Weeks outside leap phases are `sunny`. Phase boundaries are **inclusive**.
+- Leap descriptions and milestone predictions are **approximate**, not medical forecasts. A **Russian-language disclaimer** is available as `LEAP_CALENDAR_NOTICE`.
 
-   - Кнопки «Экспорт бэкапа в JSON» и «Импорт из JSON».
+### 6.6 `DurationFormatPipe`
 
-   - Поля настройки семейной синхронизации (Supabase URL, Anon Key, общий `family_id`) для синхронизации таймеров между телефонами мамы и папы в реальном времени.
+- `durationFormat` or `durationFormat:'human'` → **`1 ч 35 мин`** (Russian-language output specified by the existing contract).
+- `durationFormat:'timer'` → **`04:12`** or **`01:01:01`**.
+- Unknown or nonnumeric duration → **`—`** (em dash).
+- Negative duration → **zero**.
 
-## 6. Контракты реализованного Core
+### 6.7 Implemented Tracker UI
 
-- `StorageService` читает данные через `resource()` и `@capacitor/preferences`, ключ `baby-tracker.v1`. Снимок содержит `profile`, `events`, `activeTimers`. Перед операциями можно дождаться `ready()`; состояние чтения доступно через `isLoading()` и `error()`.
-- `saveProfile()`, `saveEvent()`, `deleteEvent()` и транзакционный `update()` возвращают `Promise<void>`. Операции сериализованы; сигналы меняются только после успешной записи. Ошибки записи передаются вызывающему коду. `saveEvent()` добавляет или заменяет запись по `id`; порядок массива не определяет хронологию.
-- `exportBackup()` возвращает JSON с `version: 1` и `exportedAt`. `importBackup(json)` полностью заменяет профиль, события и таймеры после проверки всего документа. Повреждённый документ, неизвестная версия, повторяющиеся идентификаторы и неверные даты отклоняются без записи.
-- Помимо моделей раздела 4, поддержаны `SolidsEvent` (`food`, необязательный `amountGrams`) и `PumpingEvent` (`volumeMl`, `side`: `left`, `right` или `both`). Они входят в `AnyTrackerEvent`. Экспортированные проверки типов принимают `unknown` и проверяют обязательные и необязательные поля.
-- `ActiveTimerService`: `startSleep()`, `stopSleep()`, `cancelSleep()`, `startBreastfeeding(side)`, `switchBreast(side)`, `pauseBreastfeeding()`, `stopBreastfeeding()`, `cancelBreastfeeding()`. Переключение на грудь возобновляет кормление после паузы. Сон и кормление независимы. Завершение атомарно добавляет событие и очищает таймер; отмена не добавляет событие. Повторное завершение возвращает `null`.
-- Таймеры используют только ISO-метки и разность времени; накопления ГВ сохраняют доли секунды между переключениями. Отображение и итоговые длительности округляются вниз до целых секунд. Часы корректируются при возврате видимости вкладки, слушатель и интервал снимаются при уничтожении сервиса.
-- `WakeWindowService`: `wakeDurationSec()`, `norm()`, `normProgressRatio()`, `status()`, `isOvertired()`, `timeSinceLastFeedingSec()`, `lastUsedBreastSide()` и изменяемый `nextBreastSide`. При отсутствии сна или кормления соответствующая длительность — `null`, а не выдуманное начало суток. При активном сне ВБ равно нулю. Отношение к верхней норме не ограничено единицей, чтобы отражать перегул. Возраст для норм считается по календарным дням от рождения.
-- Время с кормления считается от начала последнего ГВ, бутылочки или прикорма; сцеживание не считается кормлением. Следующая грудь противоположна последней использованной в завершённом ГВ; без истории — левая. Ручной выбор сохраняется при несвязанных изменениях и сбрасывается при изменении последнего кормления.
-- `LeapsService` трактует ПДР как полночь UTC и применяет формулу раздела 5.4 без ограничения номера недели: до ПДР и после 75-й недели текущая ячейка отсутствует. В календаре ровно 75 недель. Внутри указанной фазы недели имеют статус `stormy`, но неделя перед пиком фазы длиной от трёх недель — `fussy`; вне фаз — `sunny`. Границы включительны. Данные и навыки ориентировочные, не медицинский прогноз; доступно русское предупреждение `LEAP_CALENDAR_NOTICE`.
-- `DurationFormatPipe`: `durationFormat` или `durationFormat:'human'` → `1 ч 35 мин`; `durationFormat:'timer'` → `04:12` либо `01:01:01`. Неизвестная/нечисловая длительность → `—`, отрицательная → ноль.
+- `/tabs/tracker` is the default route. The bottom navigation contains Сегодня, Статистика, Скачки, Профиль at `/tabs/tracker`, `/tabs/stats`, `/tabs/leaps`, `/tabs/settings`.
+- Russian text and the `ion-palette-dark` OLED palette are enabled by default, independently of the system theme.
+- `LiveStatusBannerComponent` reads the existing clock-driven timers and wake norms; its Л/П button changes `selectedNextBreastSide`. Only the displayed progress bar is capped at 1.
+- `QuickActionDockComponent` stays above the tab bar, with four 72px-tall actions. Active timers remain visible when sheets close; paused breastfeeding keeps its badge without pulsing. Reduced-motion preferences disable the pulse.
+- Sleep, feeding, and diaper sheets use `IonModal` breakpoints `[0, 0.55, 0.9]`, initially `0.55`. The handle expands the sheet to reach longer forms. Its accessibility label is localized through the documented `handle` shadow part because Ionic 9 hardcodes English text.
+- Entry controls use Signal Forms `form()` and `FormField`. Sleep supports day/night live tracking and manual intervals; breastfeeding preserves separate left/right totals with one running side at a time; bottle chips add volume; diaper choices save immediately with an optional note. Persistence failures leave entered data visible.
+- Daily summaries use local calendar-day boundaries, including daylight-saving transitions. Completed sleep is clipped to its overlap with the day; overlapping intervals of the same sleep category count once. Feedings and diapers belong to the day of their start timestamp. These rules do not split or rewrite stored events.
+- Events are sorted by timestamp rather than storage order. Wake badges show the gap between consecutive completed sleeps, including a preceding sleep from another day; overlapping sleeps produce no negative gap. Deletion is available both by swipe and by a visible accessible button.
+- **Ionic 9 entrypoint:** `@ionic/angular@9.0.8` (also the latest release checked during implementation) exports standalone components from `@ionic/angular`, not `@ionic/angular/standalone`. Individual imports use the supported root entrypoint with user approval; no `IonicModule` or compatibility shim is used.
+
+### 6.8 Implemented Statistics UI
+
+- `/tabs/stats` has a Russian 7/14/30-day `IonSegment`, ending with the current local day. Each chart row spans local wall-clock time 00:00–24:00; night/day sleep use distinct colors and block heights, with feeding dots and an expandable text alternative.
+- Sleep is clipped to each calendar day and overlapping intervals within each sleep category are merged. Only completed sleeps ending by the current time are included; ongoing timers are not counted. Daily sleep and feeding averages divide by the entire selected period, including today and days without records. Pumping is excluded from feeding counts.
+- Average wake windows use full positive gaps between merged completed sleeps whose next sleep begins in the selected period, including a preceding sleep outside the period. Missing sleep or wake-window history displays `—`, not an invented duration.
+- Growth history covers all dates independently of the period selector. Weight, height and head circumference each compare against their own preceding measurement; absent fields do not reset the baseline. Same-date entries are ordered by `updatedAt`, then ID.
+- `GrowthModalComponent` uses Signal Forms and the existing storage API. At least one positive measurement and a valid nonfuture local date are required; comma and dot decimals are accepted. The sheet opens at `0.9` to expose the full form, prevents dismissal while saving, and preserves entered values on persistence failure.
+
+### 6.9 Implemented Leaps UI
+
+- `/tabs/leaps` displays completed weeks and the calendar week from EDD, the current phase, and the existing Russian medical disclaimer. Missing EDD, dates before EDD, and ages beyond week 75 have explicit states without a false current cell.
+- All 75 weeks are selectable native buttons with weather icons, accessible Russian phase names, selected state and current-week indication. The timeline automatically centers the current week on entry and the selected week when browsing, without smooth motion.
+- Selecting a leap-phase week shows that leap; selecting a sunny week shows the next leap. `IonAccordionGroup` exposes «Что происходит с малышом», «Признаки кризиса», and «Новые навыки» using the existing ten-leap dataset.
+
+### 6.10 Implemented Settings UI
+
+- `/tabs/settings` is a real Russian-language Settings page using Signal Forms (`form`, `FormField`, schema-based disabling). It edits name, actual birth date, EDD and gender while preserving the profile ID. Birth dates cannot be in the future; EDD may precede or follow the actual birth date. Wake norms still use birth date, and leaps still use EDD exclusively.
+- JSON export downloads the complete version-1 tracker database: profile, events and active timers. Connection settings and internal replication metadata are deliberately excluded. Import validates the entire document before offering explicit replacement confirmation; persistence failures preserve the current database and entered form values.
+- Family settings contain an enable checkbox, Supabase project URL, masked public anon key and shared random UUID-v4 family ID, with a button to generate the latter. Empty overrides resolve independently through `environment.supabase.{url,anonKey,familyId}` in development and production. Defaults are empty and synchronization is disabled unless explicitly enabled.
+- Configuration is persisted separately under `baby-tracker.sync.v1`. Never enter a service-role key. The shared family ID is an invitation secret: anyone who obtains it can join that family. Do not embed a private family ID in a publicly distributed application build.
+
+### 6.11 Family Synchronization Deployment and Conflict Contract
+
+1. Create a Supabase project and enable **Authentication → Anonymous Sign-Ins**. Apply `supabase/migrations/202610200001_family_sync.sql` using the SQL Editor or normal migrations.
+2. The migration creates `tracker_families` and `tracker_family_members`, member-only SELECT policies, authenticated `join_tracker_family` and `merge_tracker_family` RPCs, and the `supabase_realtime` publication entry. Anonymous authentication supplies a device user; joining requires possession of the random shared family ID. Direct client writes to these tables are not granted.
+3. Enter the same project URL, public anon key and family ID on both devices, then enable synchronization. HTTPS is required except for loopback development servers. Each device retains its own baby profile; shared state comprises events and both active timers.
+
+- `SyncService` starts with the application, not only when Settings opens. Supabase Postgres Changes triggers immediate reconciliation; reconnects, visibility changes and a 10-second catch-up interval recover missed messages without requiring a page reload.
+- Local storage remains authoritative for UI availability: writes are committed before signals change, without waiting for the network. A per-entity replication journal is saved in the **same** `baby-tracker.v1` snapshot as events/timers, so offline changes survive process destruction. Remote merges also persist before updating the UI and do not generate new local revisions.
+- Events are merged independently by ID; deletions are retained as null-valued tombstones. Sleep and breastfeeding are separate registers, preserving timestamp-based elapsed time, side switches and pauses. Stopping a timer sends its completed event and cleared timer in one SQL merge transaction.
+- Revisions advance monotonically from the device clock and all observed revisions; a device UUID breaks equal-revision ties. Different events are retained; conflicting edits to the same event or timer converge to the greater revision/UUID pair. This is deterministic conflict resolution, not a guarantee of real-world ordering between offline devices with skewed clocks.
+- The SQL row lock prevents simultaneous requests from overwriting unrelated changes. Existing local data seeds a newly selected family, but previously synchronized remote revisions take precedence over seed values. Changing the project/family selects a new replication scope; delayed responses from another scope are ignored.
+- Importing a backup while synchronization is enabled replaces local data and publishes corresponding event deletions and timer changes to the family. Disable synchronization first if a restore must remain local. Network errors leave the durable journal intact and expose Russian status/error text; credentials are never included in error messages.
+
+## Implementation Notes for Coding Agents
+
+These notes clarify how to apply the translated specification without silently changing the existing contracts:
+
+1. **Preserve public identifiers, paths, serialized field names, enum strings, and method signatures** exactly as specified. English descriptions are not instructions to rename the API.
+2. **Section 6 takes precedence** over illustrative snippets where they are incomplete. In particular, include `SolidsEvent` and `PumpingEvent` in `AnyTrackerEvent`.
+3. **The source `ClockService` example uses `@Service()`**, which is not a standard Angular core decorator. Validate and use the appropriate Angular v22 injectable-service pattern (normally `@Injectable({ providedIn: 'root' })`) rather than copying an invalid decorator into production code.
+4. **Do not translate existing Russian output strings implicitly.** The specified `DurationFormatPipe` human output and `LEAP_CALENDAR_NOTICE` remain Russian unless a separate localization requirement explicitly changes them.
+5. **Do not assume unspecified details.** Family synchronization now follows the schema, authentication and conflict-resolution decisions in Section 6.11. Other unspecified behavior, including sleep-splitting conventions and additional `SolidsEvent`/`PumpingEvent` fields, remains an open implementation decision rather than an established requirement.

@@ -80,7 +80,7 @@ export class WakeWindowService {
     const last = this.lastBreastfeeding();
     return last ? `${last.id}:${last.updatedAt}:${last.lastSide}` : '';
   });
-  readonly nextBreastSide = linkedSignal<string, BreastSide>({
+  readonly selectedNextBreastSide = linkedSignal<string, BreastSide>({
     source: this.lastBreastfeedingKey,
     computation: source => source.endsWith(':left') ? 'right' : 'left',
   });

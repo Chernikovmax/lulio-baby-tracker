@@ -1,0 +1,65 @@
+<ion-header><ion-toolbar><ion-title>Настройки</ion-title></ion-toolbar></ion-header>
+<ion-content>
+  <main class="page">
+    <h1>Профиль и данные</h1>
+    @if (loading()) { <p role="status">Загружаем сохранённые данные…</p> }
+    @if (storage.isLoading()) { <p class="hint">Подготавливаем локальное хранилище…</p> }
+    <section aria-labelledby="profile-title">
+      <h2 id="profile-title">Профиль малыша</h2>
+      <form (submit)="$event.preventDefault(); saveProfile()" novalidate>
+        <label for="baby-name">Имя малыша</label>
+        <input id="baby-name" autocomplete="given-name" [formField]="profileForm.name">
+        <label for="baby-birth">Дата рождения · для возраста и норм бодрствования</label>
+        <input id="baby-birth" type="date" [max]="maxDate" [formField]="profileForm.birthDate">
+        <label for="baby-due">Предполагаемая дата родов (ПДР) · только календарь скачков развития</label>
+        <input id="baby-due" type="date" [formField]="profileForm.dueDate">
+        <label for="baby-gender">Пол малыша</label>
+        <select id="baby-gender" [formField]="profileForm.gender">
+          <option value="boy">Мальчик</option>
+          <option value="girl">Девочка</option>
+        </select>
+        @if (profileError()) { <p class="error" role="alert">{{ profileError() }}</p> }
+        @if (profileMessage()) { <p class="success" role="status">{{ profileMessage() }}</p> }
+        <ion-button type="submit" expand="block" [disabled]="saving() || loading()">{{ saving() ? 'Сохраняем…' : 'Сохранить профиль' }}</ion-button>
+      </form>
+    </section>
+
+    <section aria-labelledby="backup-title">
+      <h2 id="backup-title">Резервная копия</h2>
+      <p class="hint">Экспортируйте все записи и настройки малыша в JSON. При восстановлении текущая база данных будет полностью заменена.</p>
+      <ion-button expand="block" fill="outline" [disabled]="exportBusy()" (click)="exportBackup()">{{ exportBusy() ? 'Подготавливаем…' : 'Скачать резервную копию' }}</ion-button>
+      <input #backupFile id="backup-file" type="file" hidden accept=".json,application/json" [disabled]="importing()" (change)="chooseBackup($event)">
+      <ion-button expand="block" fill="outline" [disabled]="importing()" (click)="backupFile.click()">Импортировать из JSON</ion-button>
+      @if (backupError()) { <p class="error" role="alert">{{ backupError() }}</p> }
+      @if (backupMessage()) { <p class="success" role="status">{{ backupMessage() }}</p> }
+      @if (confirmImport()) {
+        <div class="confirmation" role="region" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+          <h3 id="confirm-title">Заменить все данные?</h3>
+          <p id="confirm-description">Профиль, события и активные таймеры будут заменены содержимым резервной копии. При включённой синхронизации замена затронет и семью. Это действие нельзя отменить.</p>
+          <ion-button expand="block" color="danger" [disabled]="importing()" (click)="replaceFromBackup()">{{ importing() ? 'Восстанавливаем…' : 'Подтвердить замену' }}</ion-button>
+          <ion-button expand="block" fill="outline" [disabled]="importing()" (click)="cancelImport()">Отмена</ion-button>
+        </div>
+      }
+    </section>
+
+    <section aria-labelledby="sync-title">
+      <h2 id="sync-title">Семейная синхронизация</h2>
+      <p class="hint">Синхронизация необязательна: дневник работает без интернета. Выполните миграцию базы Supabase и включите анонимный вход. Укажите адрес проекта, публичный анонимный ключ и одинаковый случайный UUID v4 семьи на обоих устройствах. Не используйте ключ с правами администратора. Идентификатор семьи — секрет приглашения: передавайте его только доверенному человеку.</p>
+      <form (submit)="$event.preventDefault(); saveSync()" novalidate>
+        <label class="checkbox-row"><input type="checkbox" [formField]="syncForm.enabled">Включить синхронизацию</label>
+        <label for="sync-url">Адрес проекта Supabase</label><input id="sync-url" type="url" autocomplete="url" [formField]="syncForm.url" placeholder="https://…supabase.co">
+        <label for="sync-key">Публичный анонимный ключ Supabase</label><input id="sync-key" type="password" autocomplete="new-password" [formField]="syncForm.anonKey">
+        <label for="family-id">Общий идентификатор семьи</label>
+        <p id="family-hint" class="hint">Случайный UUID v4 — секрет приглашения, одинаковый на обоих устройствах.</p>
+        <input id="family-id" [formField]="syncForm.familyId" autocomplete="off" aria-describedby="family-hint defaults-hint" placeholder="UUID v4">
+        <ion-button type="button" fill="outline" [disabled]="syncSaving()" (click)="createFamilyId()">Создать идентификатор семьи</ion-button>
+        <p id="defaults-hint" class="hint">Пустые поля используют значения по умолчанию приложения.</p>
+        @if (sync.status()) { <p class="hint" role="status">{{ sync.status() }}</p> }
+        @if (sync.error()) { <p class="error" role="alert">{{ sync.error() }}</p> }
+        @if (syncError()) { <p class="error" role="alert">{{ syncError() }}</p> }
+        @if (syncMessage()) { <p class="success" role="status">{{ syncMessage() }}</p> }
+        <ion-button type="submit" expand="block" [disabled]="syncSaving() || sync.isLoading()">{{ syncSaving() ? 'Сохраняем…' : 'Сохранить настройки синхронизации' }}</ion-button>
+      </form>
+    </section>
+  </main>
+</ion-content>

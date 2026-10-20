@@ -1,0 +1,87 @@
+<ion-content [fullscreen]="true">
+  <main class="tracker">
+    <header class="tracker-header">
+      <div class="date-switcher">
+        <ion-button fill="clear" aria-label="Предыдущий день" (click)="moveDate(-1)"><ion-icon slot="icon-only" name="chevron-back"></ion-icon></ion-button>
+        <div class="date-title">
+          <span class="eyebrow">{{ isToday() ? 'Сегодня' : 'Выбранный день' }}</span>
+          <h1>{{ dateLabel() }}</h1>
+        </div>
+        <ion-button fill="clear" aria-label="Следующий день" (click)="moveDate(1)"><ion-icon slot="icon-only" name="chevron-forward"></ion-icon></ion-button>
+      </div>
+      @if (!isToday()) {
+        <ion-button class="today-button" fill="clear" (click)="goToday()"><ion-icon slot="start" name="calendar-outline"></ion-icon>Сегодня</ion-button>
+      }
+      @if (profile(); as baby) {
+        <p class="baby-line">{{ baby.name }}@if (babyAge()) { <span> · {{ babyAge() }}</span> }</p>
+      }
+    </header>
+
+    @if (isLoading()) {
+      <section class="state-card" role="status"><ion-spinner name="crescent"></ion-spinner><p>Загружаем записи…</p></section>
+    } @else if (storageError()) {
+      <section class="state-card error" role="alert"><p>Не удалось загрузить данные. Перезапустите приложение и попробуйте снова.</p></section>
+    } @else {
+      <app-live-status-banner></app-live-status-banner>
+
+      <section class="summary-section" aria-label="Итоги дня">
+        <div class="summary-strip">
+          <div class="summary-item"><span>☀️ Сон днём</span><strong>{{ summary().daytime | durationFormat:'human' }}</strong></div>
+          <div class="summary-item"><span>🌙 Сон ночью</span><strong>{{ summary().nighttime | durationFormat:'human' }}</strong></div>
+          <div class="summary-item"><span>🍼 Кормления</span><strong>{{ summary().feedings }}</strong></div>
+          <div class="summary-item"><span>Бутылочка</span><strong>{{ summary().bottleMl }} мл</strong></div>
+          <div class="summary-item"><span>👶 Подгузники</span><strong>{{ summary().diapers }}</strong></div>
+        </div>
+      </section>
+
+      @if (errorMessage()) { <ion-text color="danger"><p class="error-message" role="alert">{{ errorMessage() }}</p></ion-text> }
+
+      <section class="feed-section">
+        <div class="section-heading"><h2>События</h2><span>{{ dayEvents().length }}</span></div>
+        <ion-segment [value]="filter()" (ionChange)="onFilter($event.detail.value)">
+          <ion-segment-button value="all"><ion-label>Все</ion-label></ion-segment-button>
+          <ion-segment-button value="sleep"><ion-label>Сон</ion-label></ion-segment-button>
+          <ion-segment-button value="food"><ion-label>Еда</ion-label></ion-segment-button>
+          <ion-segment-button value="diaper"><ion-label>Подгузники</ion-label></ion-segment-button>
+        </ion-segment>
+
+        @if (visibleEvents().length === 0) {
+          <div class="empty-state"><span>🌙</span><p>{{ dayEvents().length === 0 ? 'За этот день пока нет записей' : 'В этой категории пока нет записей' }}</p><small>Новые события появятся здесь</small></div>
+        } @else {
+          <ion-list class="event-list">
+            @for (row of feedRows(); track row.kind === 'wake' ? 'wake-' + row.beforeId : row.event.id) {
+              @if (row.kind === 'wake') {
+                <div class="wake-gap"><small>ВБ: {{ wakeLabel(row.seconds) }}</small></div>
+              } @else {
+                <ion-item-sliding #sliding [disabled]="deletingIds().has(row.event.id)">
+                  <ion-item lines="none" class="event-item">
+                    <div class="event-time">{{ row.event.startTime | date:'HH:mm':'':'ru-RU' }}</div>
+                    <div class="event-copy"><strong>{{ eventTitle(row.event) }}</strong>
+                      @if (eventDuration(row.event); as duration) { <small>{{ duration | durationFormat:'human' }}</small> }
+                      @if (row.event.note) { <small>{{ row.event.note }}</small> }
+                    </div>
+                    <ion-button slot="end" fill="clear" color="medium" [disabled]="deletingIds().has(row.event.id)" [attr.aria-label]="'Удалить: ' + eventTitle(row.event)" (click)="deleteEvent(row.event, sliding)">
+                      <ion-icon slot="icon-only" name="trash-outline" aria-hidden="true"></ion-icon>
+                    </ion-button>
+                  </ion-item>
+                  <ion-item-options side="end">
+                    <ion-item-option color="danger" [disabled]="deletingIds().has(row.event.id)" (click)="deleteEvent(row.event, sliding)">
+                      @if (deletingIds().has(row.event.id)) { <ion-spinner name="crescent"></ion-spinner> } @else { <ion-icon slot="start" name="trash-outline"></ion-icon>Удалить }
+                    </ion-item-option>
+                  </ion-item-options>
+                </ion-item-sliding>
+              }
+            }
+          </ion-list>
+        }
+      </section>
+    }
+    <div class="bottom-space"></div>
+  </main>
+  <app-sleep-modal [isOpen]="sleepModalOpen()" (closed)="sleepModalOpen.set(false)"></app-sleep-modal>
+  <app-feeding-modal [isOpen]="feedingModalOpen()" [initialTab]="feedingInitialTab()" (closed)="feedingModalOpen.set(false)"></app-feeding-modal>
+  <app-diaper-modal [isOpen]="diaperModalOpen()" (closed)="diaperModalOpen.set(false)"></app-diaper-modal>
+</ion-content>
+<ion-footer>
+  <app-quick-action-dock (action)="onDockAction($event)"></app-quick-action-dock>
+</ion-footer>

@@ -32,6 +32,14 @@
  * https://ionicframework.com/docs/theming/dark-mode
  */
 
-/* @import "@ionic/angular/css/palettes/dark.always.css"; */
-/* @import "@ionic/angular/css/palettes/dark.class.css"; */
-@import '@ionic/angular/css/palettes/dark.system.css';
+@import '@ionic/angular/css/palettes/dark.class.css';
+
+html.ion-palette-dark.ios, html.ion-palette-dark.md {
+  color-scheme: dark;
+  --ion-background-color: #000;
+  --ion-background-color-rgb: 0, 0, 0;
+  --ion-toolbar-background: #090909;
+  --ion-tab-bar-background: #090909;
+  --ion-item-background: #101010;
+  --ion-card-background: #141414;
+}

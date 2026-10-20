@@ -1,0 +1,25 @@
+:host { display: flex; flex-direction: column; --tracker-muted: #a8a8b0; }
+.tracker { max-width: 760px; margin: auto; padding: max(18px, env(safe-area-inset-top)) 16px 24px; }
+.date-switcher, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.date-switcher ion-button { min-width: 44px; min-height: 48px; }
+.date-title { flex: 1; text-align: center; }
+h1, h2 { font-size: 1.1rem; margin: 4px 0; }
+.eyebrow, .baby-line, small { color: var(--tracker-muted); }
+.today-button { display: flex; margin: auto; }
+.baby-line { text-align: center; }
+.summary-section { margin: 16px -16px; }
+.summary-strip { display: flex; gap: 10px; overflow-x: auto; padding: 8px 16px; }
+.summary-item { display: flex; gap: 6px; white-space: nowrap; background: var(--ion-card-background); padding: 10px; border-radius: 12px; font-size: .8rem; }
+.feed-section { margin-top: 20px; }
+ion-segment { margin: 12px 0; }
+ion-segment-button { min-height: 44px; min-width: 0; --padding-start: 4px; --padding-end: 4px; text-transform: none; font-size: .8rem; }
+ion-segment-button:last-child { flex-grow: 1.5; min-width: 120px; }
+.event-list { background: transparent; }
+.event-item { --min-height: 66px; border-radius: 12px; margin-bottom: 3px; }
+.event-time { min-width: 54px; font-variant-numeric: tabular-nums; }
+.event-copy { display: grid; gap: 4px; padding: 12px 0; }
+.event-copy strong { font-size: .9rem; }
+ion-item-option { min-width: 90px; }
+.wake-gap { text-align: center; padding: 10px; }
+.empty-state, .state-card { text-align: center; padding: 24px; }
+.error, .error-message { color: var(--ion-color-danger); }

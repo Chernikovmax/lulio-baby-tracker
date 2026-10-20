@@ -1,0 +1,62 @@
+<ion-header><ion-toolbar><ion-title>Статистика</ion-title></ion-toolbar></ion-header>
+<ion-content>
+  <div class="page">
+    <h1>Ритм малыша</h1>
+    <ion-segment aria-label="Период статистики" [value]="period().toString()" (ionChange)="setPeriod($event.detail.value)">
+      <ion-segment-button value="7">7 дней</ion-segment-button>
+      <ion-segment-button value="14">14 дней</ion-segment-button>
+      <ion-segment-button value="30">30 дней</ion-segment-button>
+    </ion-segment>
+    @if (storage.isLoading()) {
+      <p role="status">Загрузка записей…</p>
+    } @else if (storage.error()) {
+      <p role="alert">Не удалось загрузить записи. Перезапустите приложение, чтобы повторить загрузку.</p>
+    } @else {
+      <section aria-labelledby="summary-title">
+        <h2 id="summary-title">В среднем за выбранный период</h2>
+        <div class="summaries">
+          <article><h3>Окно бодрствования</h3><strong>{{ stats().averageWakeSec | durationFormat }}</strong></article>
+          <article><h3>Сон за сутки</h3><strong>{{ (stats().averageDaySec === null ? null : stats().averageDaySec! + stats().averageNightSec!) | durationFormat }}</strong><p>Ночью: {{ stats().averageNightSec | durationFormat }}<br>Днём: {{ stats().averageDaySec | durationFormat }}</p></article>
+          <article><h3>Кормлений в сутки</h3><strong>{{ feedingAverage() }}</strong><p>Грудь, бутылочка и прикорм</p></article>
+        </div>
+        <p class="hint">Суточные средние рассчитаны за все {{ period() }} дней, включая сегодня и дни без записей. Учитываются только завершённые сны. Окна бодрствования — полные промежутки между снами, следующий из которых начался в периоде. «—» означает, что данных для расчёта нет.</p>
+      </section>
+      <section aria-labelledby="pattern-title">
+        <h2 id="pattern-title">Суточный ритм · 24 часа</h2>
+        <ul class="legend"><li><i class="night"></i>Ночной сон</li><li><i class="day"></i>Дневной сон</li><li><i class="feeding"></i>Кормление</li></ul>
+        <p class="hint">Каждая строка — местные сутки от 00:00 до 24:00. Под графиком доступны точные интервалы.</p>
+        <div class="chart-scroll" tabindex="0" role="region" aria-label="График сна и кормлений по дням">
+          <div class="chart">
+            <div class="axis"><span></span><div><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div></div>
+            @for (day of stats().days; track day.start) {
+              <div class="pattern-row" aria-hidden="true"><span class="date">{{ day.label }}</span><div class="band">
+                @for (block of day.blocks; track $index) { <span class="sleep" [class.night]="block.night" [class.day]="!block.night" [style.left.%]="block.start" [style.width.%]="block.end - block.start" [title]="block.label"></span> }
+                @for (feeding of day.feedings; track feeding.id) { <span class="marker" [style.left.%]="feeding.position" [title]="feeding.label"></span> }
+              </div></div>
+            }
+          </div>
+        </div>
+        <details class="intervals"><summary>Записи по дням — текстовая версия графика</summary>
+          <ul>@for (day of stats().days; track day.start) {
+            <li><strong>{{ day.label }}</strong><ul>
+              @for (block of day.blocks; track $index) { <li>{{ block.label }}</li> }
+              @for (feeding of day.feedings; track feeding.id) { <li>{{ feeding.label }}</li> }
+              @if (!day.blocks.length && !day.feedings.length) { <li>Нет записей</li> }
+            </ul></li>
+          }</ul>
+        </details>
+      </section>
+      <section aria-labelledby="growth-title">
+        <div class="section-heading"><h2 id="growth-title">Рост и развитие</h2><ion-button (click)="growthOpen.set(true)">Добавить измерение</ion-button></div>
+        <p class="hint">История за всё время. Прибавка сравнивается с предыдущим измерением того же показателя.</p>
+        @if (!growthHistory().length) { <p>Измерений пока нет. Добавьте вес, рост или окружность головы малыша.</p> }
+        <ol class="growth-history">@for (row of growthHistory(); track row.id) {
+          <li><h3>{{ row.date }}</h3><dl>@for (measurement of row.measurements; track measurement.key) {
+            <div><dt>{{ measurement.label }}</dt><dd><strong>{{ measurement.value }}</strong><small>{{ measurement.gain }}</small></dd></div>
+          }</dl>@if (row.note) { <p>{{ row.note }}</p> }</li>
+        }</ol>
+      </section>
+    }
+  </div>
+</ion-content>
+<app-growth-modal [isOpen]="growthOpen()" (closed)="growthOpen.set(false)" />
