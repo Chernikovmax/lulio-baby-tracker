@@ -42,11 +42,75 @@
       }
     </section>
 
+    <section aria-labelledby="yandex-title" [attr.aria-busy]="yandexBusy()">
+      <h2 id="yandex-title">Яндекс Диск · ручной обмен</h2>
+      <p class="hint">Общая закрытая папка с правом «Редактирование» для обоих родителей. Каждый входит в свой Яндекс ID. Передающий родитель синхронизирует первым, принимающий — после него. Отправляются события, удаления и активные таймеры, но не профиль малыша.</p>
+      <p class="hint">Разрешения Яндекса дают приложению чтение и запись всего Диска; приложение обращается только к выбранной папке. Пароль и Client Secret не нужны.</p>
+      @if (!yandex.auth.native) {
+        <p class="hint">В браузере сессия хранится только в памяти вкладки: после перезагрузки войдите снова. Для постоянного защищённого входа используйте приложение Android/iOS. Браузерные запросы также зависят от CORS Яндекса.</p>
+      }
+      @if (yandex.loadError() || yandex.auth.loadError()) {
+        <p class="error" role="alert">Не удалось загрузить настройки или защищённую сессию Яндекса. Локальный дневник доступен. Перезапустите приложение.</p>
+      }
+      <form (submit)="$event.preventDefault(); yandex.connect(yandexModel())" novalidate>
+        <label for="yandex-client">ClientID OAuth-приложения</label>
+        <input id="yandex-client" [formField]="yandexForm.clientId" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="yandex-login-hint">
+        <p id="yandex-login-hint" class="hint">Настройте Redirect URI: https://oauth.yandex.ru/verification_code. Пошаговая инструкция — в README проекта.</p>
+        <ion-button type="button" expand="block" fill="outline" [disabled]="yandexBusy()" (click)="startYandexLogin()">{{ yandex.auth.connected() ? 'Войти в Яндекс заново' : 'Войти в Яндекс' }}</ion-button>
+        <label for="yandex-folder">Путь к общей папке на вашем Диске</label>
+        <input id="yandex-folder" [formField]="yandexForm.folderPath" autocomplete="off" placeholder="/Baby Tracker">
+        <ion-button type="button" fill="outline" [disabled]="yandexBusy() || !yandex.auth.connected() || yandex.config().enabled" (click)="browseYandexFolders('/')">Выбрать папку на Диске</ion-button>
+        @if (browsingPath()) {
+          <nav aria-label="Выбор общей папки">
+            <p class="hint">{{ browsingPath() }}</p>
+            <ion-button type="button" fill="outline" [disabled]="yandexBusy()" (click)="browseYandexFolders('/')">В корень Диска</ion-button>
+            @for (folder of folderItems(); track folder.path) {
+              <ion-button type="button" expand="block" fill="clear" [disabled]="yandexBusy()" (click)="browseYandexFolders(folder.path)">{{ folder.name }}</ion-button>
+            } @empty { <p class="hint">Вложенных папок нет.</p> }
+            <ion-button type="button" expand="block" [disabled]="yandexBusy() || browsingPath() === '/'" (click)="chooseYandexFolder()">Использовать эту папку</ion-button>
+          </nav>
+        }
+        <label for="yandex-family">Общий идентификатор дневника · UUID v4</label>
+        <input id="yandex-family" [formField]="yandexForm.familyId" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="yandex-family-hint">
+        <p id="yandex-family-hint" class="hint">Создайте на первом телефоне и перенесите на второй без изменений. Это не пароль: доступ определяется правами общей папки.</p>
+        <ion-button type="button" fill="outline" [disabled]="yandexBusy() || yandex.config().enabled" (click)="createYandexFamilyId()">Создать идентификатор дневника</ion-button>
+        <ion-button type="submit" expand="block" [disabled]="yandexBusy() || !yandex.auth.connected() || yandex.config().enabled || sync.config().enabled">Подключить общую папку</ion-button>
+      </form>
+      @if (yandex.auth.awaitingCode()) {
+        <form (submit)="$event.preventDefault(); finishYandexLogin()" novalidate>
+          <p class="hint">Войдите в браузере под своим аккаунтом, разрешите доступ и скопируйте семизначный код. Вернитесь сюда в течение 10 минут, не закрывая приложение.</p>
+          @if (yandex.auth.authorizationUrl()) {
+            <a [href]="yandex.auth.authorizationUrl()" target="_blank" rel="noopener noreferrer">Открыть страницу входа в Яндекс</a>
+          }
+          <label for="yandex-code">Код подтверждения из браузера</label>
+          <input id="yandex-code" [formField]="codeForm.code" inputmode="numeric" autocomplete="one-time-code">
+          <ion-button type="submit" expand="block" [disabled]="yandexBusy()">Подтвердить вход</ion-button>
+          <ion-button type="button" fill="outline" [disabled]="yandexBusy()" (click)="yandex.auth.cancel(); codeModel.set({ code: '' })">Отменить вход</ion-button>
+        </form>
+      }
+      <div aria-live="polite" aria-atomic="true">
+        @if (yandex.auth.connected()) { <p class="success">Вход в Яндекс выполнен.</p> }
+        @if (yandex.config().enabled) {
+          <p class="hint">{{ yandex.pending() ? 'Есть изменения, ещё не подтверждённые на Диске.' : 'Локальные изменения отправлены. Новые записи другого родителя проверяются только по кнопке.' }}</p>
+        }
+        @if (yandex.config().lastSyncAt) { <p class="hint">Последний успешный обмен: {{ yandex.config().lastSyncAt | date:'dd.MM.yyyy HH:mm:ss' }}</p> }
+        @if (yandex.status()) { <p class="hint">{{ yandex.status() }}</p> }
+      </div>
+      @if (yandex.error()) { <p class="error" role="alert">{{ yandex.error() }}</p> }
+      @if (yandexActionError()) { <p class="error" role="alert">{{ yandexActionError() }}</p> }
+      <ion-button expand="block" [disabled]="yandexBusy() || !yandex.config().enabled || !yandex.auth.connected() || syncSaving()" (click)="yandex.synchronize()">{{ yandex.busy() ? 'Выполняем обмен…' : 'Синхронизировать' }}</ion-button>
+      <p class="hint">Без сети записи остаются на телефоне. Если оба родителя нажали одновременно, после завершения повторите обмен. Служебные JSON-файлы в папке не редактируйте и не удаляйте.</p>
+      @if (yandex.config().enabled || yandex.auth.connected()) {
+        <ion-button expand="block" fill="outline" [disabled]="yandexBusy()" (click)="yandex.disconnect()">Отключить Яндекс Диск на этом телефоне</ion-button>
+        <p class="hint">Неотправленные изменения останутся локально. Перед сменой способа синхронизации завершите обмен на обоих телефонах. Отключение не удаляет файлы и не отзывает разрешение в Яндекс ID.</p>
+      }
+    </section>
+
     <section aria-labelledby="sync-title">
-      <h2 id="sync-title">Семейная синхронизация</h2>
+      <h2 id="sync-title">Supabase · автоматический обмен</h2>
       <p class="hint">Синхронизация необязательна: дневник работает без интернета. Выполните миграцию базы Supabase и включите анонимный вход. Укажите адрес проекта, публичный анонимный ключ и одинаковый случайный UUID v4 семьи на обоих устройствах. Не используйте ключ с правами администратора. Идентификатор семьи — секрет приглашения: передавайте его только доверенному человеку.</p>
       <form (submit)="$event.preventDefault(); saveSync()" novalidate>
-        <label class="checkbox-row"><input type="checkbox" [formField]="syncForm.enabled">Включить синхронизацию</label>
+        <label class="checkbox-row"><input type="checkbox" [formField]="syncForm.enabled">Включить автоматическую синхронизацию Supabase</label>
         <label for="sync-url">Адрес проекта Supabase</label><input id="sync-url" type="url" autocomplete="url" [formField]="syncForm.url" placeholder="https://…supabase.co">
         <label for="sync-key">Публичный анонимный ключ Supabase</label><input id="sync-key" type="password" autocomplete="new-password" [formField]="syncForm.anonKey">
         <label for="family-id">Общий идентификатор семьи</label>
@@ -58,7 +122,7 @@
         @if (sync.error()) { <p class="error" role="alert">{{ sync.error() }}</p> }
         @if (syncError()) { <p class="error" role="alert">{{ syncError() }}</p> }
         @if (syncMessage()) { <p class="success" role="status">{{ syncMessage() }}</p> }
-        <ion-button type="submit" expand="block" [disabled]="syncSaving() || sync.isLoading()">{{ syncSaving() ? 'Сохраняем…' : 'Сохранить настройки синхронизации' }}</ion-button>
+        <ion-button type="submit" expand="block" [disabled]="syncSaving() || sync.isLoading() || yandexBusy() || (syncModel().enabled && yandex.config().enabled)">{{ syncSaving() ? 'Сохраняем…' : 'Сохранить настройки синхронизации' }}</ion-button>
       </form>
     </section>
   </main>

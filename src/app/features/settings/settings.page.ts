@@ -1,10 +1,13 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { disabled, form, FormField, required } from '@angular/forms/signals';
 import { IonButton, IonContent, IonHeader, IonTitle, IonToolbar } from '@ionic/angular';
 import type { BabyProfile } from '../../core/models/tracker.models';
 import { isIsoDate, isTrackerBackup } from '../../core/models/tracker.models';
 import { StorageService } from '../../core/services/storage.service';
 import { SyncService } from '../../core/services/sync.service';
+import { YandexSyncService } from '../../core/services/yandex-sync.service';
+import type { DiskItem } from '../../core/services/yandex-disk.client';
 
 const today = () => {
   const date = new Date();
@@ -13,13 +16,26 @@ const today = () => {
 
 @Component({
   selector: 'app-settings-page',
-  imports: [IonButton, IonContent, IonHeader, IonTitle, IonToolbar, FormField],
+  imports: [IonButton, IonContent, IonHeader, IonTitle, IonToolbar, FormField, DatePipe],
   templateUrl: './settings.page.html',
   styleUrl: './settings.page.scss',
 })
 export class SettingsPage {
   readonly storage = inject(StorageService);
   readonly sync = inject(SyncService);
+  readonly yandex = inject(YandexSyncService);
+  readonly yandexModel = signal({ clientId: '', folderPath: '/Baby Tracker', familyId: '' });
+  readonly yandexForm = form(this.yandexModel, path => {
+    disabled(path, () => this.yandexBusy() || this.yandex.config().enabled);
+  });
+  readonly codeModel = signal({ code: '' });
+  readonly codeForm = form(this.codeModel, path => { disabled(path, () => this.yandexBusy()); });
+  readonly yandexBusy = computed(() => this.yandex.busy() || this.yandexActionBusy() || this.yandex.isLoading() || this.yandex.auth.isLoading());
+  readonly yandexActionBusy = signal(false);
+  readonly yandexActionError = signal('');
+  readonly folderItems = signal<DiskItem[]>([]);
+  readonly browsingPath = signal('');
+  private yandexHydrated = false;
   readonly model = signal<Pick<BabyProfile, 'name' | 'birthDate' | 'dueDate' | 'gender'>>({ name: '', birthDate: '', dueDate: '', gender: 'boy' });
   readonly profileForm = form(this.model, path => {
     required(path.name); required(path.birthDate); required(path.dueDate);
@@ -65,6 +81,12 @@ export class SettingsPage {
         this.syncModel.set({ ...config });
         this.syncHydrated = true;
       }
+    });
+    effect(() => {
+      if (this.yandex.isLoading() || this.yandexHydrated) return;
+      const config = this.yandex.config();
+      this.yandexModel.set({ clientId: config.clientId, folderPath: config.folderPath || '/Baby Tracker', familyId: config.familyId });
+      this.yandexHydrated = true;
     });
   }
 
@@ -154,5 +176,40 @@ export class SettingsPage {
       const message = error instanceof Error ? error.message : '';
       this.syncError.set(message || 'Не удалось сохранить настройки синхронизации. Проверьте адрес, ключ и идентификатор семьи.');
     } finally { this.syncSaving.set(false); }
+  }
+
+  createYandexFamilyId(): void {
+    this.yandexModel.update(value => ({ ...value, familyId: crypto.randomUUID() }));
+  }
+
+  async startYandexLogin(): Promise<void> {
+    if (this.yandexBusy()) return;
+    this.yandexActionBusy.set(true); this.yandexActionError.set(''); this.codeModel.set({ code: '' });
+    try { await this.yandex.auth.start(this.yandexModel().clientId); }
+    catch (error) { this.yandexActionError.set(error instanceof Error ? error.message : 'Не удалось начать вход в Яндекс.'); }
+    finally { this.yandexActionBusy.set(false); }
+  }
+
+  async finishYandexLogin(): Promise<void> {
+    if (this.yandexBusy()) return;
+    this.yandexActionBusy.set(true); this.yandexActionError.set('');
+    try { await this.yandex.auth.finish(this.codeModel().code); this.codeModel.set({ code: '' }); }
+    catch (error) { this.yandexActionError.set(error instanceof Error ? error.message : 'Не удалось завершить вход в Яндекс.'); }
+    finally { this.yandexActionBusy.set(false); }
+  }
+
+  async browseYandexFolders(path: string): Promise<void> {
+    if (this.yandexBusy()) return;
+    this.yandexActionBusy.set(true); this.yandexActionError.set('');
+    try {
+      this.folderItems.set(await this.yandex.folders(path));
+      this.browsingPath.set(path);
+    } catch (error) { this.yandexActionError.set(error instanceof Error ? error.message : 'Не удалось прочитать папки.'); }
+    finally { this.yandexActionBusy.set(false); }
+  }
+
+  chooseYandexFolder(): void {
+    this.yandexModel.update(value => ({ ...value, folderPath: this.browsingPath() }));
+    this.browsingPath.set(''); this.folderItems.set([]);
   }
 }

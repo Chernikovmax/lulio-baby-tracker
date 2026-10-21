@@ -3,6 +3,7 @@ import { Preferences } from '@capacitor/preferences';
 import { createClient, RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
 import { SyncConfig, isSyncConfig, isSyncEntries } from '../models/sync.models';
+import { YANDEX_CONFIG_KEY } from '../models/yandex-sync.models';
 import { StorageService } from './storage.service';
 
 const CONFIG_KEY = 'baby-tracker.sync.v1';
@@ -86,7 +87,10 @@ export class SyncService {
       await this.initialRead.catch(() => undefined);
       if (!isSyncConfig(config)) throw new Error('Проверьте настройки синхронизации.');
       const next = { ...config, url: config.url.trim(), anonKey: config.anonKey.trim(), familyId: config.familyId.trim().toLowerCase() };
-      if (next.enabled) this.resolveConfig(next);
+      if (next.enabled) {
+        this.resolveConfig(next);
+        await this.assertYandexDisabled();
+      }
       await Preferences.set({ key: CONFIG_KEY, value: JSON.stringify(next) });
       this.configResource.value.set(next);
     });
@@ -129,6 +133,7 @@ export class SyncService {
     this.connecting = true;
     let client: SupabaseClient | undefined;
     try {
+      await this.assertYandexDisabled();
       const resolved = this.resolveConfig(config);
       await this.storage.ready();
       if (generation !== this.generation) return;
@@ -208,6 +213,17 @@ export class SyncService {
       this.status.set('Ожидание сети');
     } finally {
       connection.running = false;
+    }
+  }
+
+  private async assertYandexDisabled(): Promise<void> {
+    const { value } = await Preferences.get({ key: YANDEX_CONFIG_KEY });
+    if (value !== null) {
+      let config: unknown;
+      try { config = JSON.parse(value); } catch { throw new Error('Не удалось прочитать настройки Яндекс Диска.'); }
+      if (typeof config === 'object' && config !== null && 'enabled' in config && config.enabled === true) {
+        throw new Error('Сначала отключите Яндекс Диск. Одновременно можно использовать только один способ синхронизации.');
+      }
     }
   }
 }

@@ -395,6 +395,15 @@ readonly bottleForm = form(this.bottleModel, (path) => {
 - The SQL row lock prevents simultaneous requests from overwriting unrelated changes. Existing local data seeds a newly selected family, but previously synchronized remote revisions take precedence over seed values. Changing the project/family selects a new replication scope; delayed responses from another scope are ignored.
 - Importing a backup while synchronization is enabled replaces local data and publishes corresponding event deletions and timer changes to the family. Disable synchronization first if a restore must remain local. Network errors leave the durable journal intact and expose Russian status/error text; credentials are never included in error messages.
 
+### 6.12 Manual Yandex Disk Family Synchronization
+
+- `/tabs/settings` provides an optional manual Yandex Disk connection alongside Supabase; the two transports are mutually exclusive. `YandexSyncService` initializes the durable replication scope at application startup but performs network exchange only on user action.
+- Parents authorize independently with Authorization Code + PKCE S256 and the Yandex verification-code redirect. Client secrets are never requested or bundled. Native access tokens use the device-local secure-storage plugin; web sessions remain in memory and never use the plugin's plaintext web storage. Expired/revoked sessions require reauthorization.
+- The selected private shared folder requires editing rights and a matching `baby-tracker-family.json` marker. Settings/checkpoints are stored under `baby-tracker.yandex.v1`; the family scope is `yandex-disk:<family UUID>`, independent of each participant's local folder path.
+- Exchange downloads unprocessed immutable full-journal packets, validates every packet before one local merge, and uploads changed state under a new UUID filename with overwrite disabled. Packets include events, deletion tombstones and both timers, not the baby profile or credentials. Existing per-entry revision/device conflict resolution is reused.
+- Upload failure does not acknowledge local changes; changes made during upload remain pending. Checkpoints persist only after the exchange succeeds. Reconnecting a newly initialized folder discards its old publication checkpoint. Old packets are not automatically pruned or end-to-end encrypted.
+- A successful exchange covers packets visible to that read, not future or concurrent publications. Parents synchronize sequentially at handoff; concurrent button presses may require another exchange. See the Russian root `README.md` for OAuth registration, native setup, usage and privacy limitations.
+
 ## Implementation Notes for Coding Agents
 
 These notes clarify how to apply the translated specification without silently changing the existing contracts:

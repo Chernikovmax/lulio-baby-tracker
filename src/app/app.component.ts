@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { IonApp, IonRouterOutlet } from '@ionic/angular';
-import { SyncService } from './core/services/sync.service';
+import { YandexSyncService } from './core/services/yandex-sync.service';
 
 @Component({
   selector: 'app-root',
@@ -8,5 +8,5 @@ import { SyncService } from './core/services/sync.service';
   imports: [IonApp, IonRouterOutlet],
 })
 export class AppComponent {
-  private readonly sync = inject(SyncService);
+  private readonly yandex = inject(YandexSyncService);
 }
