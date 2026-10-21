@@ -4,17 +4,25 @@
 
 ## 1. Technology Stack &amp; Environment
 
-\* **Runtime:** Node.js 22+ and TypeScript 6.0+.
+\* **Runtime:** Node.js compatible with the installed Angular packages' `engines.node` (`^22.22.3 || ^24.15.0 || >=26.0.0` for Angular 22.2.3). TypeScript must satisfy the installed Angular compiler's peer dependency range; the current project uses TypeScript 6.0.x.
 
 \* **Framework:** Angular v22 (Zoneless by default, Standalone &amp; OnPush by default).
 
-\* **UI Framework:** Ionic Framework v9 (`@ionic/angular/standalone`).
+\* **UI Framework:** Ionic Framework v9 (currently 9.0.8); standalone components and providers are exported from `@ionic/angular`.
 
 \* **Native Runtime:** Capacitor v8 (`@capacitor/core`, `@capacitor/preferences`, `@capacitor/local-notifications`, `@capacitor/haptics`).
 
 \* **State Management:** Native Angular Signals only (`signal`, `computed`, `linkedSignal`, `effect`, `resource`).
 
 \* **Test Runner:** Vitest (via `npx ng test --watch=false`).
+
+### Dependency Compatibility
+
+\* Treat `package.json`, `package-lock.json`, and the installed packages' public `exports`, type declarations, and version-specific documentation as the source of truth for versions, import paths, and API availability.
+
+\* If a rule conflicts with the installed version, verify the supported API locally and update this file in the same task. Do not downgrade dependencies, add compatibility shims, or repeat an obsolete rule to work around the conflict. Preserve unrelated project policies.
+
+\* Recheck version-dependent rules after dependency upgrades. Do not infer available APIs or defaults from a major version alone. External documentation lookup still requires explicit network approval under the Security Policy below.
 
 ---
 
@@ -38,7 +46,7 @@
 
 \* Exclusively use Angular Signals: `signal()`, `computed()`, `linkedSignal()`, `effect()`, `debounced()`.
 
-\* For asynchronous data reads from `@capacitor/preferences` or cloud backends (Supabase), use the stable `resource()` API (or `httpResource()`) instead of `ngOnInit` with manual loading flags.
+\* For asynchronous data reads from `@capacitor/preferences` or cloud backends (Supabase), use the stable `resource()` API from `@angular/core` instead of `ngOnInit` with manual loading flags. Use `httpResource()` from `@angular/common/http` for reads through Angular's HTTP client.
 
 \* Component inputs and outputs must strictly use signal functions: `input()`, `input.required()`, `output()`, and `model()`.
 
@@ -56,9 +64,11 @@
 
 ### Ionic v9 Imports
 
-\* **ALWAYS** import UI components individually and strictly from `@ionic/angular/standalone` (e.g., `import { IonContent, IonButton, IonModal } from '@ionic/angular/standalone'`).
+\* **ALWAYS** import standalone UI components individually from `@ionic/angular` (e.g., `import { IonContent, IonButton, IonModal } from '@ionic/angular'`). Import `provideIonicAngular` from the same entry point.
 
-\* **DO NOT** import `IonicModule` from `@ionic/angular`.
+\* **DO NOT** use `@ionic/angular/standalone`: Ionic 9.0.8 does not export that subpath. The root `@ionic/angular` entry point exports standalone components, not the legacy NgModule API.
+
+\* **DO NOT** use `IonicModule` or switch to the legacy `@ionic/angular/lazy` entry point.
 
 \* All icons used from `ionicons/icons` must be explicitly registered via `addIcons({ ... })` from `ionicons`.
 
@@ -92,7 +102,7 @@ After completing each discrete development task, the agent **MUST** run the foll
 
 1. `npx tsc --noEmit` — verify zero TypeScript 6.0+ type errors.
 
-2. `npm run build` — confirm the Angular v22 production bundle compiles cleanly with no `@ionic/angular/standalone` import issues.
+2. `npm run build` — confirm the Angular v22 production bundle compiles cleanly with standalone Ionic imports from `@ionic/angular`.
 
 3. `npx ng test --watch=false` — ensure all Vitest unit tests pass.  
   
