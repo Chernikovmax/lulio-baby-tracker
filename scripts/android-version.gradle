@@ -1,0 +1,26 @@
+import groovy.json.JsonSlurper
+
+// Keep generated Android files untouched; package.json is the release version source.
+def metadata = new JsonSlurper().parse(new File(initscript.sourceFile.parentFile.parentFile, 'package.json'))
+def version = metadata.version as String
+if (!(version ==~ /\d+\.\d+\.\d+/)) {
+    throw new GradleException('Android releases require a numeric major.minor.patch version')
+}
+def parts = version.split(/\./).collect { it.toInteger() }
+if (parts[0] > 2100 || parts[1] > 999 || parts[2] > 999) {
+    throw new GradleException('Android version exceeds the major/minor/patch versionCode limits')
+}
+def code = parts[0] * 1000000 + parts[1] * 1000 + parts[2]
+if (code < 1 || code > 2100000000) {
+    throw new GradleException('Android versionCode must be between 1 and 2100000000')
+}
+
+gradle.beforeProject { project ->
+    // Registered before the Android plugin's afterEvaluate callbacks finalize variants.
+    project.afterEvaluate {
+        if (project.plugins.hasPlugin('com.android.application')) {
+            project.android.defaultConfig.versionName = version
+            project.android.defaultConfig.versionCode = code
+        }
+    }
+}

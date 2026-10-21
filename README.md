@@ -165,6 +165,54 @@ npx cap open android
 
 В установленном Ionic 9.0.8 standalone-компоненты экспортируются из `@ionic/angular`; старый подпуть `@ionic/angular/standalone` отсутствует в экспортах этой версии.
 
+## Android APK и релизы
+
+GitHub Actions (`.github/workflows/android-release.yml`) проверяет TypeScript, собирает production-веб-приложение, запускает тесты и собирает unsigned release APK при push в `main`, pull request и ручном запуске. Неподписанный APK сохраняется как диагностический артефакт на 7 дней; установить его нельзя.
+
+Push тега `v*` дополнительно подписывает APK постоянным release-ключом, проверяет подпись и выравнивание и публикует `baby-tracker-v<версия>.apk` и `SHA256SUMS` в GitHub Releases. Релиз сначала создаётся черновиком и становится опубликованным только после загрузки обоих файлов. В приватном репозитории скачать его могут только пользователи с доступом.
+
+### Однократная настройка подписи
+
+Владелец самостоятельно создаёт ключ вне репозитория (если приложение уже распространялось, нужен **тот же ключ**, а не новый):
+
+```bash
+keytool -genkeypair -v -keystore "$HOME/baby-tracker-release.jks" \
+  -alias baby-tracker -keyalg RSA -keysize 3072 -validity 10000
+```
+
+Пароли вводятся интерактивно. Не коммитьте ключ, пароли или их base64-представление; храните резервную копию ключа и паролей вне репозитория. Потеря ключа лишает возможности обновлять уже установленное приложение.
+
+В Settings → Secrets and variables → Actions создайте repository secrets:
+
+| Secret | Значение |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | Содержимое release-keystore в base64 |
+| `ANDROID_KEYSTORE_PASSWORD` | Пароль keystore |
+| `ANDROID_KEY_ALIAS` | Alias ключа, например `baby-tracker` |
+| `ANDROID_KEY_PASSWORD` | Пароль ключа (для PKCS12 обычно совпадает с паролем keystore) |
+
+На macOS ключ можно передать напрямую в GitHub CLI, не выводя его в терминал:
+
+```bash
+base64 -i "$HOME/baby-tracker-release.jks" | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEYSTORE_PASSWORD
+gh secret set ANDROID_KEY_ALIAS
+gh secret set ANDROID_KEY_PASSWORD
+```
+
+### Выпуск версии
+
+Источник версии — `package.json`; обновите также корневые версии в `package-lock.json`. Тег должен точно совпадать с `v<версия>`, например `v1.0.0`. Скрипт `scripts/android-version.gradle` задаёт `versionName` и `versionCode`, не изменяя сгенерированные Android-файлы. Формула кода — `major × 1000000 + minor × 1000 + patch` (`1.0.0` → `1000000`); minor и patch не превышают 999, код не превышает 2100000000. Для обновлений всегда повышайте версию.
+
+После успешной CI-проверки `main` и настройки четырёх секретов:
+
+```bash
+git tag -a v1.0.0 -m "Baby Tracker v1.0.0"
+git push origin v1.0.0
+```
+
+Следите за workflow **Android APK** во вкладке Actions. Если выпуск прервался, исправьте причину и перезапустите неуспешные jobs; публикация допускает повторный запуск. Готовые APK доступны во вкладке Releases. Android потребует разрешить установку из выбранного источника; Google Play для этого не нужен.
+
 ## Проверка реализации
 
 Автоматические тесты охватывают обмен двух локальных устройств, исправления и удаления, передачу активного сна, повторную обработку, перезапуск с неотправленными данными, ошибку загрузки, запись во время отправки, повреждённый пакет, чужой UUID, восстановление папки и защиту OAuth-сессии.
