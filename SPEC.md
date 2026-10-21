@@ -10,6 +10,7 @@ A mobile application for parents of infants (from birth through 12+ months), rep
 - **Visual 24-hour sleep and feeding patterns** over 7, 14, or 30 days.
 - **Calendar of 10 developmental leaps**, calculated strictly from the estimated due date (EDD), not the actual birth date.
 - **Offline-first operation**, with optional real-time synchronization between both parents' phones via Supabase Realtime.
+- **Android launcher icon:** native resources in `android/app/src/main/res/` provide legacy PNGs for all five densities, adaptive layers for API 26+, and a monochrome layer for themed icons on API 33+. Both launcher variants use `@mipmap/ic_launcher` / `@mipmap/ic_launcher_round`; themed colors depend on launcher support and the user's theme setting.
 
 ## 2. Architecture and File Structure (`src/app/`)
 
@@ -53,12 +54,28 @@ src/app/
 |---|---|---|
 | **Bottom navigation** | Four tabs: **Today**, **Statistics**, **Leaps**, **Profile** | `IonTabs`, `IonTabBar`, `IonTabButton`, `IonIcon`, `IonLabel` |
 | **Header and date navigation** | Baby's name and age; swipe or arrows to navigate days; quick return to **Today** | `IonHeader`, `IonToolbar`, `IonButtons`, `IonButton`, `IonDatetimeButton` |
-| **Live status banner (wake window/sleep)** | Status such as **“Awake: 1 h 35 min (normal: 1 h 20 min – 1 h 50 min)”**, color-coded progress, time since last feeding, **“Next: Right”** badge | `IonCard`, `IonCardContent`, `IonProgressBar`, `IonBadge`, `IonText` |
+| **Live status banner (wake window/sleep)** | Elapsed sleep/wake timer, time since feeding and next-breast badge. Age-based wake guidance, progress and overtired warnings appear only during local daytime (08:00 inclusive–20:00 exclusive); the wake timer continues overnight without recommendations | `IonCard`, `IonCardContent`, `IonProgressBar`, `IonBadge`, `IonText` |
 | **Quick-action dock** | Thumb-friendly buttons at least 56 px high, positioned above the tab bar. An active timer produces a pulsating elapsed-time badge on its button | `IonGrid`, `IonRow`, `IonCol`, `IonButton`, `IonBadge`, `IonRippleEffect` |
-| **Timer/data-entry bottom sheets** | Slide up to approximately half screen or 85–90% screen height | `IonModal` with `breakpoints="[0, 0.55, 0.9]"` and `initialBreakpoint="0.55"` |
-| **Daily timeline/event feed** | Chip filters (**All**, **Sleep**, **Feeding**, **Diaper**). Display the selected day's events in chronological order, top to bottom. Gray separators between sleep sessions show the actual wake-window duration. Swipe left to delete an event | `IonSegment`, `IonSegmentButton`, `IonList`, `IonItemSliding`, `IonItem`, `IonItemOptions`, `IonItemOption` |
+| **Timer/data-entry bottom sheets** | Sleep, feeding and diaper sheets open at 90% height and allow scrolling at every breakpoint. Feeding save action stays in an `IonFooter`, outside scrollable content, without needing keyboard focus | `IonModal` with `breakpoints="[0, 0.55, 0.9]"`, `initialBreakpoint="0.9"` and `expandToScroll="false"` |
+| **Recent event feed** | Chip filters (**All**, **Sleep**, **Feeding**, **Diaper**). Show the latest 20 matching events across all dates, newest first, with date and time on each row. Selected date affects only age/day summaries, not the feed. Wake separators follow the newer sleep in reverse chronology. Swipe left to delete an event | `IonSegment`, `IonSegmentButton`, `IonList`, `IonItemSliding`, `IonItem`, `IonItemOptions`, `IonItemOption` |
 | **24-hour daily pattern** | One 24h band per day for 7/14/30 days; blue blocks indicate sleep and dots indicate feedings | `IonSegment` for the range + custom SVG/CSS Grid bands |
 | **Developmental leaps calendar** | Horizontal timeline covering weeks 1–75 with cloud/sun icons and expanded descriptions of difficult phases and emerging skills | Horizontal flex week container + `IonAccordionGroup`, `IonAccordion` |
+
+Event entry defaults use the current local date/time on every sheet opening, not the component's creation time. Sleep and manual breastfeeding start/end inputs both default to now and require adjustment to a valid completed interval. Growth date defaults to today on each opening; new profile date fields default to today without replacing saved profile dates.
+
+Diaper entry includes an editable date/time; all three state buttons save at that chosen instant. Feeding → Breast → Manual records start/end, whole minutes on each breast (excluding pauses), last breast and optional note. The total must be positive and fit within the interval; the last breast must have nonzero time. Manual entries use ordinary persisted/synchronized breastfeeding events and leave active timers unchanged.
+
+Honor Magic Capsule remains **not implemented**: its official integration requires Honor app registration/App ID and granted access, neither available in this checkout. References: [integration guide](https://developer.honor.com/cn/doc/guides/101454), [approval/configuration flow](https://developer.honor.com/cn/doc/guides/101455). Android notification-shade timers below are a separate feature, not capsule support.
+
+**Android notification-shade timers.** The local Capacitor package `plugins/timer-notification/` posts a silent, low-importance notification for sleep or wakefulness, plus a separate notification for active breastfeeding. It uses the Android system Chronometer with the original start timestamp; JavaScript sends state transitions only, not per-second updates. An unknown wake start produces no wake notification. Breastfeeding pauses show frozen elapsed time; switching/resuming preserves accumulated time and excludes pauses. Finished/cancelled feeding removes only its own notification. Tapping a notification opens the app.
+
+Android 13+ notification permission is requested once when the first timer appears. Denial does not block event persistence or timers. Profile → “Таймеры в шторке Android” shows access status and opens the relevant Android settings; returning to the app reconciles current state and permissions. The channel has no sound or vibration. Users can override channel settings or dismiss notifications according to their Android/MagicOS version.
+
+No foreground service or exact alarm is needed for the system-rendered counter. Notification state is restored from persisted tracker state on app startup/resume. This does not promise automatic restoration after a phone reboot or a user force-stop; reopen the app. On web/iOS this Android-only feature makes no native plugin calls.
+
+Install the local package with normal `npm install`; run `npx cap sync android` after building web assets. Plugin code and its permission manifest live outside generated `android/`; Capacitor generates registration/Gradle integration. Native behavior tests: from `android/`, run `./gradlew :baby-tracker-timer-notification:testDebugUnitTest` with JDK 21 and the Android SDK configured. Robolectric covers Android API 32 and 36, including rendered stopwatch ticks, pause/finish transitions and blocked notifications. Device-specific Honor appearance still requires a physical-device check.
+
+
 
 ## 4. Data Models (`src/app/core/models/`)
 

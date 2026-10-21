@@ -23,6 +23,10 @@ export class WakeWindowService {
     return age === null ? null : WAKE_NORMS.find(item => age >= item.minAgeDays && (item.maxAgeDays === null || age <= item.maxAgeDays)) ?? null;
   });
   readonly isSleeping = computed(() => this.storage.activeTimers().sleepTimer !== null);
+  readonly isNight = computed(() => {
+    const hour = new Date(this.clock.now()).getHours();
+    return hour >= 20 || hour < 8;
+  });
   readonly lastSleepEnd = computed(() => {
     const now = this.clock.now();
     let latest: string | null = null;
@@ -38,12 +42,14 @@ export class WakeWindowService {
     return end === null ? null : Math.floor(Math.max(0, this.clock.now() - Date.parse(end)) / 1000);
   });
   readonly normProgressRatio = computed(() => {
+    if (this.isNight()) return null;
     const duration = this.wakeDurationSec();
     const norm = this.norm();
     return duration === null || norm === null ? null : duration / (norm.maxWakeMinutes * 60);
   });
   readonly status = computed<WakeStatusLevel | null>(() => {
     if (this.isSleeping()) return 'sleeping';
+    if (this.isNight()) return null;
     const duration = this.wakeDurationSec();
     const norm = this.norm();
     if (duration === null || norm === null) return null;

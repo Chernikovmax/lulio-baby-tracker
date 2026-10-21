@@ -85,10 +85,13 @@ export class TrackerPage {
   });
   readonly visibleEvents = computed(() => {
     const filter = this.filter();
-    if (filter === 'all') return this.dayEvents();
-    if (filter === 'sleep') return this.dayEvents().filter(event => event.type === 'sleep');
-    if (filter === 'food') return this.dayEvents().filter(event => ['breastfeeding', 'bottle', 'solids', 'pumping'].includes(event.type));
-    return this.dayEvents().filter(event => event.type === 'diaper');
+    return [...this.storage.events()]
+      .filter(event => filter === 'all' ||
+        (filter === 'sleep' && event.type === 'sleep') ||
+        (filter === 'food' && ['breastfeeding', 'bottle', 'solids', 'pumping'].includes(event.type)) ||
+        (filter === 'diaper' && event.type === 'diaper'))
+      .sort((a, b) => eventTime(b) - eventTime(a) || b.id.localeCompare(a.id))
+      .slice(0, 20);
   });
   readonly feedRows = computed<FeedRow[]>(() => {
     const events = this.visibleEvents();
@@ -102,13 +105,13 @@ export class TrackerPage {
     }
     const rows: FeedRow[] = [];
     for (const event of events) {
+      rows.push({ kind: 'event', event });
       if (event.type === 'sleep' && Number.isFinite(eventTime(event)) && Number.isFinite(eventEnd(event))) {
         const previousSleep = priorSleep.get(event.id);
         if (previousSleep && eventTime(event) >= eventEnd(previousSleep)) {
           rows.push({ kind: 'wake', seconds: Math.floor((eventTime(event) - eventEnd(previousSleep)) / 1000), beforeId: event.id });
         }
       }
-      rows.push({ kind: 'event', event });
     }
     return rows;
   });

@@ -1,0 +1,30 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace = 'ru.babytracker.timernotification'
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
+            // Robolectric's API 36 FileDescriptor interceptor on JDK 21.
+            jvmArgs '--add-exports=java.base/jdk.internal.access=ALL-UNNAMED'
+        }
+    }
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation "androidx.core:core:$rootProject.ext.androidxCoreVersion"
+    implementation "androidx.appcompat:appcompat:$rootProject.ext.androidxAppCompatVersion"
+    testImplementation "junit:junit:$rootProject.ext.junitVersion"
+    testImplementation 'org.robolectric:robolectric:4.17'
+}

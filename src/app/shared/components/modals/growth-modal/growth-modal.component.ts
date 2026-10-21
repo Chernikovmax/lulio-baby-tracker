@@ -15,7 +15,7 @@ const emptyModel = () => ({ date: localDate(), weightKg: '', heightCm: '', headC
   selector: 'app-growth-modal',
   imports: [IonButton, IonContent, IonHeader, IonModal, IonTitle, IonToolbar, FormField, RussianSheetDirective],
   template: `
-    <ion-modal appRussianSheet aria-label="Новое измерение" [isOpen]="isOpen()" [breakpoints]="[0, 0.55, 0.9]" [initialBreakpoint]="0.9" [canDismiss]="!pending()" (didDismiss)="closed.emit()">
+    <ion-modal appRussianSheet aria-label="Новое измерение" [isOpen]="isOpen()" [breakpoints]="[0, 0.55, 0.9]" [initialBreakpoint]="0.9" [canDismiss]="!pending()" (willPresent)="prepare()" (didDismiss)="closed.emit()">
       <ng-template>
         <ion-header><ion-toolbar><ion-title>Новое измерение</ion-title><ion-button slot="end" fill="clear" [disabled]="pending()" (click)="closed.emit()">Закрыть</ion-button></ion-toolbar></ion-header>
         <ion-content>
@@ -43,6 +43,10 @@ export class GrowthModalComponent {
   readonly pending = signal(false);
   readonly error = signal('');
   get today() { return localDate(); }
+  prepare(): void {
+    this.model.update(value => ({ ...value, date: localDate() }));
+    this.error.set('');
+  }
 
   async save(): Promise<void> {
     if (this.pending()) return;

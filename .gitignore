@@ -21,7 +21,8 @@ log.txt
 /.ionic
 /www
 /platforms
-/plugins
+/plugins/*
+!/plugins/timer-notification/
 
 # Compiled output
 /dist

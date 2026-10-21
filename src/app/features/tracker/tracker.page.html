@@ -37,7 +37,7 @@
       @if (errorMessage()) { <ion-text color="danger"><p class="error-message" role="alert">{{ errorMessage() }}</p></ion-text> }
 
       <section class="feed-section">
-        <div class="section-heading"><h2>События</h2><span>{{ dayEvents().length }}</span></div>
+        <div class="section-heading"><h2>Последние 20 событий</h2><span>{{ visibleEvents().length }}</span></div>
         <ion-segment [value]="filter()" (ionChange)="onFilter($event.detail.value)">
           <ion-segment-button value="all"><ion-label>Все</ion-label></ion-segment-button>
           <ion-segment-button value="sleep"><ion-label>Сон</ion-label></ion-segment-button>
@@ -46,7 +46,7 @@
         </ion-segment>
 
         @if (visibleEvents().length === 0) {
-          <div class="empty-state"><span>🌙</span><p>{{ dayEvents().length === 0 ? 'За этот день пока нет записей' : 'В этой категории пока нет записей' }}</p><small>Новые события появятся здесь</small></div>
+          <div class="empty-state"><span>🌙</span><p>В этой категории пока нет записей</p><small>Новые события появятся здесь независимо от даты</small></div>
         } @else {
           <ion-list class="event-list">
             @for (row of feedRows(); track row.kind === 'wake' ? 'wake-' + row.beforeId : row.event.id) {
@@ -55,7 +55,7 @@
               } @else {
                 <ion-item-sliding #sliding [disabled]="deletingIds().has(row.event.id)">
                   <ion-item lines="none" class="event-item">
-                    <div class="event-time">{{ row.event.startTime | date:'HH:mm':'':'ru-RU' }}</div>
+                    <div class="event-time">{{ row.event.startTime | date:'dd.MM.yyyy':'':'ru-RU' }}<br>{{ row.event.startTime | date:'HH:mm':'':'ru-RU' }}</div>
                     <div class="event-copy"><strong>{{ eventTitle(row.event) }}</strong>
                       @if (eventDuration(row.event); as duration) { <small>{{ duration | durationFormat:'human' }}</small> }
                       @if (row.event.note) { <small>{{ row.event.note }}</small> }

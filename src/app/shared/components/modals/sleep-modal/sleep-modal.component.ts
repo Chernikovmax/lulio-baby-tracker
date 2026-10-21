@@ -6,12 +6,13 @@ import type { SleepEvent } from '../../../../core/models/tracker.models';
 import { ActiveTimerService } from '../../../../core/services/active-timer.service';
 import { StorageService } from '../../../../core/services/storage.service';
 import { RussianSheetDirective } from '../russian-sheet.directive';
+import { localDateTime } from '../../../local-date-time';
 
 @Component({
   selector: 'app-sleep-modal',
   imports: [IonModal, IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonSegment, IonSegmentButton, FormField, DurationFormatPipe, RussianSheetDirective],
   template: `
-    <ion-modal appRussianSheet aria-label="Сон" [isOpen]="isOpen()" [breakpoints]="[0, 0.55, 0.9]" [initialBreakpoint]="0.55" (didDismiss)="closed.emit()">
+    <ion-modal appRussianSheet aria-label="Сон" [isOpen]="isOpen()" [breakpoints]="[0, 0.55, 0.9]" [initialBreakpoint]="0.9" [expandToScroll]="false" (willPresent)="prepare()" (didDismiss)="closed.emit()">
       <ng-template>
         <ion-header><ion-toolbar><ion-title>Сон</ion-title><ion-button slot="end" fill="clear" aria-label="Закрыть" (click)="closed.emit()">Закрыть</ion-button></ion-toolbar></ion-header>
         <ion-content class="sheet-content">
@@ -60,8 +61,13 @@ export class SleepModalComponent {
   readonly night = signal(false);
   readonly pending = signal(false);
   readonly error = signal('');
-  readonly manualModel = signal({ startTime: '', endTime: '', isNightSleep: false, note: '' });
+  readonly manualModel = signal({ startTime: localDateTime(), endTime: localDateTime(), isNightSleep: false, note: '' });
   readonly manualForm = form(this.manualModel, path => { required(path.startTime); required(path.endTime); });
+  prepare(): void {
+    const now = localDateTime();
+    this.manualModel.update(value => ({ ...value, startTime: now, endTime: now }));
+    this.error.set('');
+  }
   setTab(value: string | number | undefined) { if (value === 'timer' || value === 'manual') { this.tab.set(value); this.error.set(''); } }
   patchManual(patch: Partial<{ isNightSleep: boolean }>) { this.manualModel.update(model => ({ ...model, ...patch })); }
   async start() { await this.run(async () => this.timer.startSleep(this.night())); }
@@ -73,7 +79,7 @@ export class SleepModalComponent {
     if (end.getTime() <= start.getTime()) { this.error.set('Окончание должно быть позже начала.'); return; }
     if (end.getTime() > now) { this.error.set('Окончание не может быть в будущем.'); return; }
     const event: SleepEvent = { id: crypto.randomUUID(), type: 'sleep', startTime: start.toISOString(), endTime: end.toISOString(), isNightSleep: value.isNightSleep, ...(value.note.trim() ? { note: value.note.trim() } : {}), updatedAt: new Date().toISOString() };
-    await this.run(async () => { await this.storage.saveEvent(event); this.manualModel.set({ startTime: '', endTime: '', isNightSleep: false, note: '' }); this.closed.emit(); });
+    await this.run(async () => { await this.storage.saveEvent(event); this.manualForm().reset({ startTime: localDateTime(), endTime: localDateTime(), isNightSleep: false, note: '' }); this.closed.emit(); });
   }
   private async run(operation: () => Promise<void>) { this.pending.set(true); this.error.set(''); try { await operation(); } catch (reason) { this.error.set(reason instanceof Error ? reason.message : 'Не удалось сохранить данные.'); } finally { this.pending.set(false); } }
 }

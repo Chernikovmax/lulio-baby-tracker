@@ -8,6 +8,7 @@ import { StorageService } from '../../core/services/storage.service';
 import { SyncService } from '../../core/services/sync.service';
 import { YandexSyncService } from '../../core/services/yandex-sync.service';
 import type { DiskItem } from '../../core/services/yandex-disk.client';
+import { TimerNotificationService } from '../../core/services/timer-notification.service';
 
 const today = () => {
   const date = new Date();
@@ -24,6 +25,7 @@ export class SettingsPage {
   readonly storage = inject(StorageService);
   readonly sync = inject(SyncService);
   readonly yandex = inject(YandexSyncService);
+  readonly timerNotifications = inject(TimerNotificationService);
   readonly yandexModel = signal({ clientId: '', folderPath: '/Baby Tracker', familyId: '' });
   readonly yandexForm = form(this.yandexModel, path => {
     disabled(path, () => this.yandexBusy() || this.yandex.config().enabled);
@@ -36,7 +38,7 @@ export class SettingsPage {
   readonly folderItems = signal<DiskItem[]>([]);
   readonly browsingPath = signal('');
   private yandexHydrated = false;
-  readonly model = signal<Pick<BabyProfile, 'name' | 'birthDate' | 'dueDate' | 'gender'>>({ name: '', birthDate: '', dueDate: '', gender: 'boy' });
+  readonly model = signal<Pick<BabyProfile, 'name' | 'birthDate' | 'dueDate' | 'gender'>>({ name: '', birthDate: today(), dueDate: today(), gender: 'boy' });
   readonly profileForm = form(this.model, path => {
     required(path.name); required(path.birthDate); required(path.dueDate);
     disabled(path, () => this.saving() || this.loading());

@@ -12,7 +12,7 @@ import { DurationFormatPipe } from '../../pipes/duration-format.pipe';
       <ion-card-content>
         <div class="heading">{{ timers.sleepTimer() ? 'Малыш спит' : 'Бодрствование' }} <ion-badge>{{ timers.sleepTimer() ? (timers.sleepTimer()?.isNightSleep ? 'Ночной сон' : 'Дневной сон') : 'Сейчас' }}</ion-badge></div>
         <div class="timer" role="timer" [attr.aria-label]="timers.sleepTimer() ? 'Длительность сна' : 'Длительность бодрствования'">{{ (timers.sleepTimer() ? timers.sleepDurationSec() : wake.wakeDurationSec()) | durationFormat:'timer' }}</div>
-        @if (!timers.sleepTimer()) {
+        @if (!timers.sleepTimer() && !wake.isNight()) {
           @if (wake.norm(); as norm) {
             <p>Ориентир: {{ norm.minWakeMinutes * 60 | durationFormat }} — {{ norm.maxWakeMinutes * 60 | durationFormat }}</p>
           } @else { <p>Укажите дату рождения для возрастных ориентиров.</p> }

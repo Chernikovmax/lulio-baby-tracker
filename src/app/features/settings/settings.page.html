@@ -24,6 +24,16 @@
       </form>
     </section>
 
+    @if (timerNotifications.supported) {
+      <section aria-labelledby="timer-notifications-title">
+        <h2 id="timer-notifications-title">Таймеры в шторке Android</h2>
+        <p class="hint">Сон или бодрствование и активное грудное кормление отображаются без звука и вибрации. Счётчик обновляет Android, даже когда приложение свёрнуто. Нажатие на уведомление открывает дневник.</p>
+        <p role="status">{{ timerNotifications.status() === null ? 'Проверяем доступ к уведомлениям…' : timerNotifications.status()?.enabled ? 'Уведомления таймеров разрешены.' : 'Уведомления выключены. Разрешите их в настройках Android.' }}</p>
+        <ion-button expand="block" fill="outline" [disabled]="timerNotifications.requesting()" (click)="timerNotifications.requestAccess()">{{ timerNotifications.requesting() ? 'Открываем…' : timerNotifications.status()?.permission === 'prompt' ? 'Разрешить уведомления' : 'Настройки уведомлений' }}</ion-button>
+        @if (timerNotifications.error()) { <p class="error" role="status">{{ timerNotifications.error() }}</p> }
+      </section>
+    }
+
     <section aria-labelledby="backup-title">
       <h2 id="backup-title">Резервная копия</h2>
       <p class="hint">Экспортируйте все записи и настройки малыша в JSON. При восстановлении текущая база данных будет полностью заменена.</p>
