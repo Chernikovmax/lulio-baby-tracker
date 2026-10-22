@@ -9,6 +9,7 @@ import { SyncService } from '../../core/services/sync.service';
 import { YandexSyncService } from '../../core/services/yandex-sync.service';
 import type { DiskItem } from '../../core/services/yandex-disk.client';
 import { TimerNotificationService } from '../../core/services/timer-notification.service';
+import { PwaService } from '../../core/services/pwa.service';
 
 const today = () => {
   const date = new Date();
@@ -26,6 +27,7 @@ export class SettingsPage {
   readonly sync = inject(SyncService);
   readonly yandex = inject(YandexSyncService);
   readonly timerNotifications = inject(TimerNotificationService);
+  readonly pwa = inject(PwaService);
   readonly yandexModel = signal({ clientId: '', folderPath: '/Baby Tracker', familyId: '' });
   readonly yandexForm = form(this.yandexModel, path => {
     disabled(path, () => this.yandexBusy() || this.yandex.config().enabled);

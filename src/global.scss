@@ -43,3 +43,40 @@ html.ion-palette-dark.ios, html.ion-palette-dark.md {
   --ion-item-background: #101010;
   --ion-card-background: #141414;
 }
+
+/* Keep the document fixed; Ionic owns scrolling and keyboard focus inside content. */
+html, body { overscroll-behavior-y: none; }
+input, select, textarea { font-size: max(16px, 1rem); }
+
+@supports (height: 100dvh) {
+  ion-app { height: 100dvh; }
+}
+
+/* Do not cover the notch, landscape sensor housing or the home indicator. */
+ion-content {
+  --padding-start: env(safe-area-inset-left);
+  --padding-end: env(safe-area-inset-right);
+}
+ion-modal {
+  --max-height: calc(100% - env(safe-area-inset-top));
+}
+
+.pwa-update {
+  position: relative;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+  background: var(--ion-toolbar-background);
+  color: var(--ion-text-color);
+  font-size: .9rem;
+}
+.pwa-update button {
+  min-height: 52px;
+  padding: 8px 12px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--ion-color-primary);
+  color: var(--ion-color-primary-contrast);
+}

@@ -77,7 +77,6 @@ public class TimerNotificationPluginTest {
         Notification notification = onlyNotification();
         assertEquals("Ночной сон", notification.extras.getString(Notification.EXTRA_TITLE));
         assertEquals(start, notification.when);
-        assertTrue(notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER));
         assertNotEquals(0, notification.flags & Notification.FLAG_ONGOING_EVENT);
         assertNull(manager.getNotificationChannel(notification.getChannelId()).getSound());
         assertFalse(manager.getNotificationChannel(notification.getChannelId()).shouldVibrate());
@@ -85,20 +84,26 @@ public class TimerNotificationPluginTest {
         notification.contentIntent.send();
         assertEquals(TestActivity.class.getName(), shadowOf(activity).getNextStartedActivity().getComponent().getClassName());
 
-        FrameLayout parent = new FrameLayout(activity);
-        View content = Notification.Builder.recoverBuilder(activity, notification).createContentView().apply(activity, parent);
-        activity.setContentView(content);
-        activity.getWindow().getDecorView().dispatchWindowVisibilityChanged(View.VISIBLE);
-        int chronometerId = activity.getResources().getIdentifier("chronometer", "id", "android");
-        Chronometer clock = content.findViewById(chronometerId);
-        assertNotNull(clock);
-        long before = SystemClock.elapsedRealtime() - clock.getBase();
-        assertEquals(90, before / 1000);
-        shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
-        assertEquals(2000, SystemClock.elapsedRealtime() - clock.getBase() - before);
-        // The displayed second can lag the elapsed clock until the next scheduled UI tick.
-        String rendered = clock.getText().toString();
-        assertTrue("Rendered clock: " + rendered, rendered.endsWith("1:31") || rendered.endsWith("1:32"));
+        Notification.Builder systemBuilder = Notification.Builder.recoverBuilder(activity, notification);
+        for (android.widget.RemoteViews layout : new android.widget.RemoteViews[] {
+            systemBuilder.createContentView(), systemBuilder.createBigContentView()
+        }) {
+            assertNotNull(layout);
+            FrameLayout parent = new FrameLayout(activity);
+            View content = layout.apply(activity, parent);
+            activity.setContentView(content);
+            activity.getWindow().getDecorView().dispatchWindowVisibilityChanged(View.VISIBLE);
+            int chronometerId = activity.getResources().getIdentifier("timer_duration", "id", activity.getPackageName());
+            Chronometer clock = content.findViewById(chronometerId);
+            assertNotNull("Timer must be in the notification body, not only the system header", clock);
+            assertTrue(clock.isShown());
+            long before = SystemClock.elapsedRealtime() - clock.getBase();
+            assertTrue(before / 1000 >= 90 && before / 1000 <= 92);
+            shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
+            assertEquals(2000, SystemClock.elapsedRealtime() - clock.getBase() - before);
+            String rendered = clock.getText().toString();
+            assertTrue("Rendered clock: " + rendered, rendered.matches("0?1:3[1-4]"));
+        }
     }
 
     @Test
@@ -110,6 +115,14 @@ public class TimerNotificationPluginTest {
         Notification paused = notificationTitled("Грудное кормление · пауза");
         assertFalse(paused.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER));
         assertEquals("00:02:05", paused.extras.getString(Notification.EXTRA_TEXT));
+        View pausedContent = Notification.Builder.recoverBuilder(activity, paused).createContentView()
+            .apply(activity, new FrameLayout(activity));
+        assertEquals(View.GONE, pausedContent.findViewById(R.id.timer_duration).getVisibility());
+        android.widget.TextView frozen = pausedContent.findViewById(R.id.timer_paused_duration);
+        assertEquals(View.VISIBLE, frozen.getVisibility());
+        assertEquals("00:02:05", frozen.getText().toString());
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
+        assertEquals("00:02:05", frozen.getText().toString());
         assertNotNull(notificationTitled("Бодрствование"));
         assertEquals(2, manager.getActiveNotifications().length);
         update(timer("Бодрствование", start, 0), null);

@@ -8,7 +8,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.os.SystemClock;
 import android.provider.Settings;
+import android.view.View;
+import android.widget.RemoteViews;
 import androidx.core.app.NotificationCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -128,6 +131,8 @@ public class TimerNotificationPlugin extends Plugin {
         if (intent == null) throw new IllegalArgumentException("No launcher activity");
         intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent tap = PendingIntent.getActivity(getContext(), 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        RemoteViews content = new RemoteViews(getContext().getPackageName(), R.layout.notification_timer);
+        content.setTextViewText(R.id.timer_title, timer.getString("title"));
         NotificationCompat.Builder builder = new NotificationCompat.Builder(getContext(), CHANNEL)
             .setSmallIcon(R.drawable.ic_tracker_timer)
             .setContentTitle(timer.getString("title"))
@@ -138,15 +143,23 @@ public class TimerNotificationPlugin extends Plugin {
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE);
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setStyle(new NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(content)
+            .setCustomBigContentView(content);
         if (!timer.isNull("startedAt")) {
             long startedAt = Math.min(timer.getLong("startedAt"), System.currentTimeMillis());
-            builder.setWhen(startedAt).setShowWhen(true).setUsesChronometer(true)
-                .setContentText("Нажмите, чтобы открыть дневник");
+            // Use a body chronometer: OEM notification headers may show only a timestamp.
+            long base = SystemClock.elapsedRealtime() - (System.currentTimeMillis() - startedAt);
+            content.setChronometer(R.id.timer_duration, base, null, true);
+            builder.setWhen(startedAt).setShowWhen(true).setUsesChronometer(false);
         } else {
             long seconds = Math.max(0, timer.getLong("elapsedSeconds"));
-            builder.setShowWhen(false).setUsesChronometer(false)
-                .setContentText(String.format(Locale.ROOT, "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60));
+            String elapsed = String.format(Locale.ROOT, "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60);
+            content.setViewVisibility(R.id.timer_duration, View.GONE);
+            content.setViewVisibility(R.id.timer_paused_duration, View.VISIBLE);
+            content.setTextViewText(R.id.timer_paused_duration, elapsed);
+            builder.setShowWhen(false).setUsesChronometer(false).setContentText(elapsed);
         }
         manager.notify(TAG, id, builder.build());
     }

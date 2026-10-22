@@ -39,6 +39,12 @@ export class StorageService {
     if (!this.dataResource.hasValue()) this.dataResource.value.set(initial);
   }
 
+  /** Finish already queued diary writes before a user-requested application reload. */
+  async whenIdle(): Promise<void> {
+    await this.writes;
+    await this.ready();
+  }
+
   /** Последовательная read–modify–write транзакция; при ошибке записи состояние не меняется. */
   update(transform: (data: TrackerData) => TrackerData): Promise<void> {
     return this.commit(data => {

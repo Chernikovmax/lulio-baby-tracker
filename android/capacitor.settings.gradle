@@ -2,11 +2,11 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')
 
-include ':baby-tracker-timer-notification'
-project(':baby-tracker-timer-notification').projectDir = new File('../plugins/timer-notification/android')
-
 include ':aparajita-capacitor-secure-storage'
 project(':aparajita-capacitor-secure-storage').projectDir = new File('../node_modules/@aparajita/capacitor-secure-storage/android')
+
+include ':baby-tracker-timer-notification'
+project(':baby-tracker-timer-notification').projectDir = new File('../plugins/timer-notification/android')
 
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../node_modules/@capacitor/app/android')

@@ -2,6 +2,8 @@
 
 # [AGENTS.md](http://AGENTS.md) — Baby Tracker Development Rules (Angular 22 + Ionic 9 + Capacitor 8)
 
+All agent instructions MUST be written in English.
+
 ## 1. Technology Stack &amp; Environment
 
 \* **Runtime:** Node.js compatible with the installed Angular packages' `engines.node` (`^22.22.3 || ^24.15.0 || >=26.0.0` for Angular 22.2.3). TypeScript must satisfy the installed Angular compiler's peer dependency range; the current project uses TypeScript 6.0.x.
@@ -95,6 +97,10 @@
 \* **DO NOT** manually modify generated code inside `android/` and `ios/`, with the exception of standard permission manifests (`AndroidManifest.xml`, `Info.plist`) when explicitly required by a Capacitor plugin.
 
 ---
+
+## Deployment
+
+Agents MUST read [`DEPLOY.md`](DEPLOY.md) before publishing an Android release or deploying the production PWA and follow its process-specific prerequisites and verification guidance. Do not treat prerequisites or a CI artifact as a completed deployment.
 
 ## 4. Agent Verification Loop
 

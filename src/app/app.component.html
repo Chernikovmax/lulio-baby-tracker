@@ -1,3 +1,9 @@
 <ion-app>
+  @if (pwa.updateReady() || pwa.recoveryRequired()) {
+    <aside class="pwa-update" role="status">
+      <span>{{ pwa.recoveryRequired() ? 'Нужна перезагрузка приложения.' : 'Новая версия готова.' }} Сначала сохраните открытые формы. В веб-версии потребуется повторный вход в Яндекс.</span>
+      <button type="button" [disabled]="pwa.busy()" (click)="pwa.reload()">Перезагрузить</button>
+    </aside>
+  }
   <ion-router-outlet></ion-router-outlet>
 </ion-app>
