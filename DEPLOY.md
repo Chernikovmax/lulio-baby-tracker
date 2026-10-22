@@ -32,8 +32,8 @@ Source of truth: [workflow](.github/workflows/android-release.yml), [version scr
    ```
 
 4. The build job uploads `android/app/build/outputs/apk/release/app-release-unsigned.apk` as **unsigned-apk**, retained for **7 days**. This is an unsigned intermediate, **not an installable signed release** and not interchangeable with the Release download.
-5. On a qualifying tag, the release job downloads that artifact, zipaligns and signs it with the preconfigured identity, runs `apksigner verify --verbose` and `zipalign -c -p 4`, then generates `SHA256SUMS`. It creates a draft Release if one does not exist, uploads `release/baby-tracker-v<version>.apk` and `release/SHA256SUMS`, then publishes it and marks it latest. Publication is automatic; the draft is not a manual approval gate. A rerun overwrites same-named attachments (`--clobber`); do not rerun casually after distribution.
-6. Confirm both jobs succeeded and the published GitHub Release points to the intended tag/commit, with **baby-tracker-v<version>.apk** and **SHA256SUMS** attached. Do not report success from the unsigned artifact alone. If signing/publication fails, fix the authorized prerequisite and inspect existing Release state before any approved retry; never fall back to an unsigned APK or a replacement key.
+5. On a qualifying tag, the release job downloads that artifact, zipaligns and signs it with the preconfigured identity, runs `apksigner verify --verbose` and `zipalign -c -p 4`, then generates `SHA256SUMS`. It creates a draft Release if one does not exist, uploads `release/lulio-baby-tracker-v<version>.apk` and `release/SHA256SUMS`, then publishes it and marks it latest. Publication is automatic; the draft is not a manual approval gate. A rerun overwrites same-named attachments (`--clobber`); do not rerun casually after distribution.
+6. Confirm both jobs succeeded and the published GitHub Release points to the intended tag/commit, with **lulio-baby-tracker-v<version>.apk** and **SHA256SUMS** attached. Do not report success from the unsigned artifact alone. If signing/publication fails, fix the authorized prerequisite and inspect existing Release state before any approved retry; never fall back to an unsigned APK or a replacement key.
 
 ### Verify the downloaded release
 
@@ -42,11 +42,11 @@ Download both attachments from the actual Release into the same directory using 
 ```sh
 shasum -a 256 -c SHA256SUMS
 # Use the installed Android SDK build-tools apksigner executable:
-apksigner verify --verbose --print-certs baby-tracker-v<VERSION>.apk
+apksigner verify --verbose --print-certs lulio-baby-tracker-v<VERSION>.apk
 # With an authorized, connected Android test device:
-adb install baby-tracker-v<VERSION>.apk
+adb install lulio-baby-tracker-v<VERSION>.apk
 # On a device with the previous release already installed:
-adb install -r baby-tracker-v<VERSION>.apk
+adb install -r lulio-baby-tracker-v<VERSION>.apk
 ```
 
 Replace `<VERSION>` with the numeric version. Compare the public signer certificate fingerprint with the trusted previous release; checksum agreement alone does not establish publisher identity. Confirm package ID, version name/code using SDK APK inspection tools. On a real device, verify launch, diary entry/timer persistence after restart, and, where a previous signed release is available, an in-place update retaining data. Never uninstall or clear storage to disguise a failed update. Record unavailable device/update checks as unverified.

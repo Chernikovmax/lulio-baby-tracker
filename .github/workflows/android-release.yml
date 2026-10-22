@@ -99,7 +99,7 @@ jobs:
           tools="$ANDROID_HOME/build-tools/36.0.0"
           mkdir -p release
           "$tools/zipalign" -p -f 4 unsigned/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
-          apk="release/baby-tracker-v$VERSION.apk"
+          apk="release/lulio-baby-tracker-v$VERSION.apk"
           "$tools/apksigner" sign --ks "$keystore" \
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
@@ -108,7 +108,7 @@ jobs:
           "$tools/apksigner" verify --verbose "$apk"
           "$tools/zipalign" -c -p 4 "$apk"
           cd release
-          sha256sum "baby-tracker-v$VERSION.apk" > SHA256SUMS
+          sha256sum "lulio-baby-tracker-v$VERSION.apk" > SHA256SUMS
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,8 +117,8 @@ jobs:
         run: |
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" --verify-tag --draft \
-              --title "Baby Tracker $GITHUB_REF_NAME" --generate-notes
+              --title "Lulio: baby tracker $GITHUB_REF_NAME" --generate-notes
           fi
           gh release upload "$GITHUB_REF_NAME" \
-            "release/baby-tracker-v$VERSION.apk" release/SHA256SUMS --clobber
+            "release/lulio-baby-tracker-v$VERSION.apk" release/SHA256SUMS --clobber
           gh release edit "$GITHUB_REF_NAME" --draft=false --latest

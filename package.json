@@ -1,8 +1,8 @@
 {
-  "name": "baby-tracker",
-  "version": "1.0.1",
+  "name": "lulio-baby-tracker",
+  "version": "1.1.0",
   "author": "Chernikovmax",
-  "homepage": "https://ionicframework.com/",
+  "homepage": "https://github.com/Chernikovmax/lulio-baby-tracker",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -51,5 +51,5 @@
     "typescript-eslint": "^8.61.0",
     "vitest": "~4.0.18"
   },
-  "description": "An Ionic project"
+  "description": "Lulio: baby tracker"
 }

@@ -21,6 +21,11 @@ gradle.beforeProject { project ->
         if (project.plugins.hasPlugin('com.android.application')) {
             project.android.defaultConfig.versionName = version
             project.android.defaultConfig.versionCode = code
+            project.android.buildTypes.all { buildType ->
+                project.android.sourceSets.getByName(buildType.name).res.srcDir(
+                    new File(initscript.sourceFile.parentFile, 'android-res')
+                )
+            }
         }
     }
 }
