@@ -73,7 +73,7 @@ export class YandexAuthService {
       this.cancel();
       throw new Error('Запрос входа истёк. Нажмите «Войти в Яндекс» ещё раз.');
     }
-    if (!/^\d{7}$/.test(code.trim())) throw new Error('Введите семизначный код, показанный Яндексом в браузере.');
+    if (!code.trim()) throw new Error('Введите код подтверждения, показанный Яндексом в браузере.');
     const response = await yandexRequest({
       url: 'https://oauth.yandex.ru/token', method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, responseType: 'json',

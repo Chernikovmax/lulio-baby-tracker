@@ -101,12 +101,12 @@
       </form>
       @if (yandex.auth.awaitingCode()) {
         <form (submit)="$event.preventDefault(); finishYandexLogin()" novalidate>
-          <p class="hint">Войдите в браузере под своим аккаунтом, разрешите доступ и скопируйте семизначный код. Вернитесь сюда в течение 10 минут, не закрывая приложение.</p>
+          <p class="hint">Войдите в браузере под своим аккаунтом, разрешите доступ и скопируйте код подтверждения целиком, включая буквы и цифры. Вернитесь сюда в течение 10 минут, не закрывая приложение.</p>
           @if (yandex.auth.authorizationUrl()) {
             <a [href]="yandex.auth.authorizationUrl()" target="_blank" rel="noopener noreferrer">Открыть страницу входа в Яндекс</a>
           }
           <label for="yandex-code">Код подтверждения из браузера</label>
-          <input id="yandex-code" [formField]="codeForm.code" inputmode="numeric" autocomplete="one-time-code">
+          <input id="yandex-code" [formField]="codeForm.code" inputmode="text" autocomplete="one-time-code" autocapitalize="off" spellcheck="false">
           <ion-button type="submit" expand="block" [disabled]="yandexBusy()">Подтвердить вход</ion-button>
           <ion-button type="button" fill="outline" [disabled]="yandexBusy()" (click)="yandex.auth.cancel(); codeModel.set({ code: '' })">Отменить вход</ion-button>
         </form>

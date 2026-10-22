@@ -36,7 +36,7 @@ describe('Защита сессии Яндекса', () => {
     const auth = TestBed.inject(YandexAuthService);
     await auth.start(clientId);
     const authorize = new URL(open.mock.calls[0][0] as string);
-    await auth.finish('1234567');
+    await auth.finish('aB3dE5fG7hJ9kL2m');
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(exchange!.get('code_verifier')!)));
     const challenge = btoa(String.fromCharCode(...digest)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
     expect(authorize.searchParams.get('code_challenge')).toBe(challenge);
