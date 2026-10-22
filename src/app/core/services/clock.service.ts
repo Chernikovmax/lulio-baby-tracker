@@ -10,14 +10,18 @@ export class ClockService {
 
   constructor() {
     if (!isPlatformBrowser(inject(PLATFORM_ID))) return;
-    const interval = setInterval(() => this.timestamp.set(Date.now()), 1000);
+    const interval = setInterval(() => this.refresh(), 1000);
     const onVisible = () => {
-      if (this.document.visibilityState === 'visible') this.timestamp.set(Date.now());
+      if (this.document.visibilityState === 'visible') this.refresh();
     };
     this.document.addEventListener('visibilitychange', onVisible);
     this.destroyRef.onDestroy(() => {
       clearInterval(interval);
       this.document.removeEventListener('visibilitychange', onVisible);
     });
+  }
+
+  refresh(): void {
+    this.timestamp.set(Date.now());
   }
 }

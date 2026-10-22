@@ -32,32 +32,57 @@ describe('Ядро трекера', () => {
 
   it('восстанавливает сон после уничтожения сервиса и завершает его ровно одним событием', async () => {
     let core = await setup();
-    await core.timers.startSleep(true);
+    await core.timers.startSleep(true, 10);
+    expect(core.timers.sleepDurationSec()).toBe(600);
     TestBed.resetTestingModule();
     vi.setSystemTime(new Date('2026-10-20T14:30:00Z'));
     core = await setup();
-    expect(core.timers.sleepDurationSec()).toBe(9000);
+    expect(core.timers.sleepDurationSec()).toBe(9600);
     const [first, second] = await Promise.all([core.timers.stopSleep(), core.timers.stopSleep()]);
-    expect(first).toMatchObject({ type: 'sleep', isNightSleep: true, startTime: '2026-10-20T12:00:00.000Z', endTime: '2026-10-20T14:30:00.000Z' });
+    expect(first).toMatchObject({ type: 'sleep', isNightSleep: true, startTime: '2026-10-20T11:50:00.000Z', endTime: '2026-10-20T14:30:00.000Z' });
     expect(second).toBeNull();
     expect(core.storage.events().filter(event => event.type === 'sleep')).toEqual([first]);
     expect(core.timers.sleepTimer()).toBeNull();
   });
 
-  it('считает обе груди по меткам времени, исключает паузы и сохраняет доли секунды', async () => {
-    const { timers, storage } = await setup();
-    await timers.startBreastfeeding('left');
+  it('восстанавливает кормление с прошлым началом, считает обе груди и исключает паузы', async () => {
+    let { timers, storage } = await setup();
+    await timers.startBreastfeeding('left', 60);
+    expect(timers.leftDurationSec()).toBe(3600);
+    expect(timers.rightDurationSec()).toBe(0);
     vi.setSystemTime(Date.now() + 600);
     await timers.switchBreast('right');
     vi.setSystemTime(Date.now() + 2400);
     await timers.pauseBreastfeeding();
     vi.setSystemTime(Date.now() + 60_000);
+    TestBed.resetTestingModule();
+    ({ timers, storage } = await setup());
+    expect(timers.breastDurationSec()).toBe(3602);
     await timers.switchBreast('left');
     vi.setSystemTime(Date.now() + 600);
     const result = await timers.stopBreastfeeding();
-    expect(result).toMatchObject({ leftDurationSec: 1, rightDurationSec: 2, lastSide: 'left' });
+    expect(result).toMatchObject({ startTime: '2026-10-20T11:00:00.000Z', leftDurationSec: 3601, rightDurationSec: 2, lastSide: 'left' });
     const backup = JSON.parse(await storage.exportBackup()) as unknown;
     expect(isTrackerBackup(backup)).toBe(true);
+  });
+
+  it.each([-1, 61, 0.5, Number.NaN])('не запускает таймеры с недопустимым смещением %s', async minutes => {
+    const { timers, storage } = await setup();
+    await expect(timers.startSleep(false, minutes)).rejects.toThrow('от 0 до 60');
+    await expect(timers.startBreastfeeding('right', minutes)).rejects.toThrow('от 0 до 60');
+    expect(storage.activeTimers()).toEqual({ sleepTimer: null, breastTimer: null });
+  });
+
+  it('показывает прошедшие минуты сразу, даже если часы интерфейса ещё не обновились', async () => {
+    const { timers } = await setup();
+    vi.setSystemTime(Date.now() + 500);
+    await timers.startSleep(false, 10);
+    await timers.startBreastfeeding('right', 10);
+    expect(timers.sleepDurationSec()).toBe(600);
+    expect(timers.breastDurationSec()).toBe(600);
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(timers.sleepDurationSec()).toBe(602);
+    expect(timers.rightDurationSec()).toBe(602);
   });
 
   it('не теряет параллельные изменения, а ошибка записи не изменяет видимое состояние', async () => {

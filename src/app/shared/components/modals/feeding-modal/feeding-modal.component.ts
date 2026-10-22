@@ -8,11 +8,12 @@ import { WakeWindowService } from '../../../../core/services/wake-window.service
 import { localDateTime } from '../../../local-date-time';
 import { DurationFormatPipe } from '../../../pipes/duration-format.pipe';
 import { RussianSheetDirective } from '../russian-sheet.directive';
+import { TimerStartOffsetComponent } from '../../timer-start-offset/timer-start-offset.component';
 
 type FeedingTab = 'breastfeeding' | 'bottle';
 @Component({
   selector: 'app-feeding-modal',
-  imports: [IonModal, IonHeader, IonToolbar, IonTitle, IonContent, IonFooter, IonButton, IonSegment, IonSegmentButton, FormField, DurationFormatPipe, RussianSheetDirective],
+  imports: [IonModal, IonHeader, IonToolbar, IonTitle, IonContent, IonFooter, IonButton, IonSegment, IonSegmentButton, FormField, DurationFormatPipe, RussianSheetDirective, TimerStartOffsetComponent],
   template: `
     <ion-modal appRussianSheet aria-label="Кормление" [isOpen]="isOpen()" [breakpoints]="[0,0.55,0.9]" [initialBreakpoint]="0.9" [expandToScroll]="false" [canDismiss]="!pending()" (willPresent)="prepare()" (didDismiss)="closed.emit()"><ng-template>
       <ion-header><ion-toolbar><ion-title>Кормление</ion-title><ion-button slot="end" fill="clear" [disabled]="pending()" aria-label="Закрыть" (click)="closed.emit()">Закрыть</ion-button></ion-toolbar></ion-header>
@@ -23,6 +24,10 @@ type FeedingTab = 'breastfeeding' | 'bottle';
           @if (breastMode() === 'timer') {
             <section class="panel">
               <p class="elapsed">{{ timer.breastDurationSec() | durationFormat:'timer' }}</p>
+              @if (!timer.breastTimer()) {
+                <app-timer-start-offset [(minutes)]="minutesAgo" [disabled]="pending()" />
+                <p class="hint">Прошедшие минуты будут добавлены выбранной при запуске груди.</p>
+              }
               <div class="sides">
                 <ion-button expand="block" [fill]="timer.breastTimer()?.activeSide==='left'||(!timer.breastTimer()&&selectedSide()==='left')?'solid':'outline'" [disabled]="pending()" (click)="choose('left')">Левая · {{ timer.leftDurationSec() | durationFormat:'timer' }}</ion-button>
                 <ion-button expand="block" [fill]="timer.breastTimer()?.activeSide==='right'||(!timer.breastTimer()&&selectedSide()==='right')?'solid':'outline'" [disabled]="pending()" (click)="choose('right')">Правая · {{ timer.rightDurationSec() | durationFormat:'timer' }}</ion-button>
@@ -33,10 +38,9 @@ type FeedingTab = 'breastfeeding' | 'bottle';
           } @else {
             <form id="manual-breast-form" class="panel" (submit)="$event.preventDefault(); saveManualBreast()">
               <label>Начало кормления<input type="datetime-local" [formField]="manualForm.startTime"></label>
-              <label>Окончание кормления<input type="datetime-local" [formField]="manualForm.endTime"></label>
               <label>Левая грудь, минут<input type="number" step="1" [formField]="manualForm.leftMinutes"></label>
               <label>Правая грудь, минут<input type="number" step="1" [formField]="manualForm.rightMinutes"></label>
-              <p class="hint">Укажите время у каждой груди без пауз; сумма не должна превышать длительность кормления.</p>
+              <p class="hint">Окончание рассчитывается автоматически: начало плюс сумма минут у обеих грудей, без пауз.</p>
               <label>Последняя грудь<select [formField]="manualForm.lastSide"><option value="left">Левая</option><option value="right">Правая</option></select></label>
               <label>Заметка<textarea rows="2" [formField]="manualForm.note"></textarea></label>
             </form>
@@ -68,23 +72,25 @@ export class FeedingModalComponent {
   private readonly storage = inject(StorageService);
   private readonly wake = inject(WakeWindowService);
   readonly selectedSide = linkedSignal(() => this.wake.selectedNextBreastSide());
+  readonly minutesAgo = signal(0);
   readonly pending = signal(false);
   readonly error = signal('');
   readonly bottleModel = signal({ content: 'breast_milk' as BottleContent, volumeMl: 90, startTime: localDateTime(), note: '' });
   readonly bottleForm = form(this.bottleModel, path => { required(path.content); required(path.volumeMl); min(path.volumeMl, 5); max(path.volumeMl, 500); required(path.startTime); });
-  readonly manualModel = signal({ startTime: localDateTime(), endTime: localDateTime(), leftMinutes: 0, rightMinutes: 0, lastSide: 'left' as BreastSide, note: '' });
-  readonly manualForm = form(this.manualModel, path => { required(path.startTime); required(path.endTime); min(path.leftMinutes, 0); min(path.rightMinutes, 0); });
+  readonly manualModel = signal({ startTime: localDateTime(), leftMinutes: 0, rightMinutes: 0, lastSide: 'left' as BreastSide, note: '' });
+  readonly manualForm = form(this.manualModel, path => { required(path.startTime); min(path.leftMinutes, 0); min(path.rightMinutes, 0); });
 
   prepare(): void {
     const now = localDateTime();
+    this.minutesAgo.set(0);
     this.bottleModel.update(value => ({ ...value, startTime: now }));
-    this.manualModel.update(value => ({ ...value, startTime: now, endTime: now }));
+    this.manualModel.update(value => ({ ...value, startTime: now }));
     this.error.set('');
   }
   setTab(value: string | number | undefined): void { if (value === 'breastfeeding' || value === 'bottle') { this.tab.set(value); this.error.set(''); } }
   setBreastMode(value: string | number | undefined): void { if (value === 'timer' || value === 'manual') { this.breastMode.set(value); this.error.set(''); } }
   add(amount: number): void { this.bottleModel.update(model => ({ ...model, volumeMl: Math.min(500, Number(model.volumeMl || 0) + amount) })); }
-  async choose(side: BreastSide): Promise<void> { await this.run(async () => { const current = this.timer.breastTimer(); if (!current) await this.timer.startBreastfeeding(side); else if (current.activeSide !== side) await this.timer.switchBreast(side); this.selectedSide.set(side); }); }
+  async choose(side: BreastSide): Promise<void> { await this.run(async () => { const current = this.timer.breastTimer(); if (!current) { await this.timer.startBreastfeeding(side, this.minutesAgo()); this.minutesAgo.set(0); } else if (current.activeSide !== side) await this.timer.switchBreast(side); this.selectedSide.set(side); }); }
   async pause(): Promise<void> { await this.run(() => this.timer.pauseBreastfeeding()); }
   async finish(): Promise<void> { await this.run(async () => { await this.timer.stopBreastfeeding(); this.closed.emit(); }); }
 
@@ -106,15 +112,17 @@ export class FeedingModalComponent {
   async saveManualBreast(): Promise<void> {
     if (this.pending()) return;
     const value = this.manualModel();
-    const start = new Date(value.startTime).getTime(), end = new Date(value.endTime).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end > Date.now()) { this.error.set('Укажите начало и окончание: окончание позже начала и не в будущем.'); return; }
+    const start = new Date(value.startTime).getTime();
+    if (!Number.isFinite(start) || start > Date.now()) { this.error.set('Укажите корректное начало кормления, не позднее текущего момента.'); return; }
     const left = Number(value.leftMinutes), right = Number(value.rightMinutes);
-    if (!Number.isInteger(left) || !Number.isInteger(right) || left < 0 || right < 0 || left + right <= 0 || (left + right) * 60 > (end - start) / 1000) { this.error.set('Укажите целые минуты у каждой груди; сумма больше нуля и не превышает длительность кормления.'); return; }
+    if (!Number.isInteger(left) || !Number.isInteger(right) || left < 0 || right < 0 || left + right <= 0) { this.error.set('Укажите целые неотрицательные минуты у каждой груди; сумма должна быть больше нуля.'); return; }
+    const end = start + (left + right) * 60_000;
+    if (!Number.isFinite(end) || end > Date.now()) { this.error.set('Рассчитанное окончание кормления не может быть в будущем. Проверьте начало и длительность.'); return; }
     if ((value.lastSide === 'left' ? left : right) === 0) { this.error.set('Для последней груди укажите ненулевую длительность.'); return; }
     const event: BreastfeedingEvent = { id: crypto.randomUUID(), type: 'breastfeeding', startTime: new Date(start).toISOString(), endTime: new Date(end).toISOString(), leftDurationSec: left * 60, rightDurationSec: right * 60, lastSide: value.lastSide, updatedAt: new Date().toISOString(), ...(value.note.trim() ? { note: value.note.trim() } : {}) };
     await this.run(async () => {
       await this.storage.saveEvent(event);
-      this.manualForm().reset({ startTime: localDateTime(), endTime: localDateTime(), leftMinutes: 0, rightMinutes: 0, lastSide: this.wake.selectedNextBreastSide(), note: '' });
+      this.manualForm().reset({ startTime: localDateTime(), leftMinutes: 0, rightMinutes: 0, lastSide: this.wake.selectedNextBreastSide(), note: '' });
       this.closed.emit();
     });
   }

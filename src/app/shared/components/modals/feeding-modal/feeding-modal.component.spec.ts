@@ -16,7 +16,7 @@ describe('Ручное грудное кормление', () => {
     vi.useRealTimers();
   });
 
-  it('отклоняет несовместимые интервалы и сохраняет обе груди без изменения текущего таймера', async () => {
+  it('вычисляет окончание по сумме минут с переходом через полночь и не меняет текущий таймер', async () => {
     TestBed.configureTestingModule({});
     const storage = TestBed.inject(StorageService);
     await storage.ready();
@@ -25,20 +25,48 @@ describe('Ручное грудное кормление', () => {
     const running = structuredClone(timers.breastTimer());
     const component = TestBed.createComponent(FeedingModalComponent).componentInstance;
     const start = new Date(2026, 9, 20, 23, 50).getTime();
-    const end = new Date(2026, 9, 21, 0, 20).getTime();
-    component.manualModel.set({ startTime: '2026-10-20T23:50', endTime: '2026-10-21T00:20', leftMinutes: 20, rightMinutes: 15, lastSide: 'right', note: ' Ночное кормление ' });
-    await component.saveManualBreast();
-    expect(storage.events()).toEqual([]);
-    component.manualModel.update(value => ({ ...value, leftMinutes: 0, rightMinutes: 0 }));
-    await component.saveManualBreast();
-    expect(storage.events()).toEqual([]);
-    component.manualModel.update(value => ({ ...value, leftMinutes: 15, rightMinutes: 0 }));
-    await component.saveManualBreast();
-    expect(storage.events()).toEqual([]);
-    component.manualModel.update(value => ({ ...value, rightMinutes: 10 }));
+    const end = new Date(2026, 9, 21, 0, 15).getTime();
+    component.manualModel.update(value => ({ ...value, startTime: '2026-10-20T23:50', leftMinutes: 15, rightMinutes: 10, lastSide: 'right', note: ' Ночное кормление ' }));
     await component.saveManualBreast();
     const backup = JSON.parse(await storage.exportBackup());
     expect(backup.events).toEqual([expect.objectContaining({ type: 'breastfeeding', startTime: new Date(start).toISOString(), endTime: new Date(end).toISOString(), leftDurationSec: 900, rightDurationSec: 600, lastSide: 'right', note: 'Ночное кормление' })]);
     expect(timers.breastTimer()).toEqual(running);
+  });
+
+  it.each([
+    { leftMinutes: 0, rightMinutes: 0, lastSide: 'left' as const },
+    { leftMinutes: -1, rightMinutes: 10, lastSide: 'right' as const },
+    { leftMinutes: 1.5, rightMinutes: 10, lastSide: 'right' as const },
+    { leftMinutes: 15, rightMinutes: 0, lastSide: 'right' as const },
+  ])('не сохраняет некорректные длительности или последнюю грудь: %j', async durations => {
+    TestBed.configureTestingModule({});
+    const storage = TestBed.inject(StorageService);
+    await storage.ready();
+    const component = TestBed.createComponent(FeedingModalComponent).componentInstance;
+    component.manualModel.set({ startTime: '2026-10-20T23:50', ...durations, note: '' });
+    await component.saveManualBreast();
+    expect(storage.events()).toEqual([]);
+    expect(component.error()).not.toBe('');
+  });
+
+  it('отклоняет рассчитанное окончание в будущем, но сохраняет кормление, закончившееся сейчас', async () => {
+    TestBed.configureTestingModule({});
+    const storage = TestBed.inject(StorageService);
+    await storage.ready();
+    const component = TestBed.createComponent(FeedingModalComponent).componentInstance;
+    const start = new Date(2026, 9, 21, 10, 0);
+    vi.setSystemTime(new Date(2026, 9, 21, 10, 15));
+    component.manualModel.set({ startTime: '2026-10-21T10:00', leftMinutes: 10, rightMinutes: 6, lastSide: 'right', note: '' });
+    await component.saveManualBreast();
+    expect(storage.events()).toEqual([]);
+    expect(component.error()).toContain('окончание');
+    component.manualModel.update(value => ({ ...value, rightMinutes: 5 }));
+    await component.saveManualBreast();
+    expect(storage.events()).toEqual([expect.objectContaining({
+      startTime: start.toISOString(),
+      endTime: new Date(2026, 9, 21, 10, 15).toISOString(),
+      leftDurationSec: 600,
+      rightDurationSec: 300,
+    })]);
   });
 });

@@ -7,10 +7,11 @@ import { ActiveTimerService } from '../../../../core/services/active-timer.servi
 import { StorageService } from '../../../../core/services/storage.service';
 import { RussianSheetDirective } from '../russian-sheet.directive';
 import { localDateTime } from '../../../local-date-time';
+import { TimerStartOffsetComponent } from '../../timer-start-offset/timer-start-offset.component';
 
 @Component({
   selector: 'app-sleep-modal',
-  imports: [IonModal, IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonSegment, IonSegmentButton, FormField, DurationFormatPipe, RussianSheetDirective],
+  imports: [IonModal, IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonSegment, IonSegmentButton, FormField, DurationFormatPipe, RussianSheetDirective, TimerStartOffsetComponent],
   template: `
     <ion-modal appRussianSheet aria-label="Сон" [isOpen]="isOpen()" [breakpoints]="[0, 0.55, 0.9]" [initialBreakpoint]="0.9" [expandToScroll]="false" (willPresent)="prepare()" (didDismiss)="closed.emit()">
       <ng-template>
@@ -30,6 +31,7 @@ import { localDateTime } from '../../../local-date-time';
                   <ion-button expand="block" [fill]="!night() ? 'solid' : 'outline'" [disabled]="pending()" (click)="night.set(false)">День</ion-button>
                   <ion-button expand="block" [fill]="night() ? 'solid' : 'outline'" [disabled]="pending()" (click)="night.set(true)">Ночь</ion-button>
                 </div>
+                <app-timer-start-offset [(minutes)]="minutesAgo" [disabled]="pending()" />
                 <ion-button class="primary" expand="block" [disabled]="pending()" (click)="start()">Начать сон</ion-button>
               }
             </section>
@@ -59,18 +61,20 @@ export class SleepModalComponent {
   private readonly storage = inject(StorageService);
   readonly tab = signal<'timer' | 'manual'>('timer');
   readonly night = signal(false);
+  readonly minutesAgo = signal(0);
   readonly pending = signal(false);
   readonly error = signal('');
   readonly manualModel = signal({ startTime: localDateTime(), endTime: localDateTime(), isNightSleep: false, note: '' });
   readonly manualForm = form(this.manualModel, path => { required(path.startTime); required(path.endTime); });
   prepare(): void {
     const now = localDateTime();
+    this.minutesAgo.set(0);
     this.manualModel.update(value => ({ ...value, startTime: now, endTime: now }));
     this.error.set('');
   }
   setTab(value: string | number | undefined) { if (value === 'timer' || value === 'manual') { this.tab.set(value); this.error.set(''); } }
   patchManual(patch: Partial<{ isNightSleep: boolean }>) { this.manualModel.update(model => ({ ...model, ...patch })); }
-  async start() { await this.run(async () => this.timer.startSleep(this.night())); }
+  async start() { await this.run(async () => { await this.timer.startSleep(this.night(), this.minutesAgo()); this.minutesAgo.set(0); }); }
   async stop() { await this.run(async () => { await this.timer.stopSleep(); }); }
   async saveManual() {
     const value = this.manualModel();

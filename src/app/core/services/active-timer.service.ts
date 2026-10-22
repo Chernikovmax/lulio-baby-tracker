@@ -17,11 +17,12 @@ export class ActiveTimerService {
   readonly rightDurationSec = computed(() => this.sideDuration('right'));
   readonly breastDurationSec = computed(() => this.leftDurationSec() + this.rightDurationSec());
 
-  startSleep(isNightSleep = false): Promise<void> {
-    return this.storage.update(data => {
+  async startSleep(isNightSleep = false, minutesAgo = 0): Promise<void> {
+    await this.storage.update(data => {
       if (data.activeTimers.sleepTimer) throw new Error('Таймер сна уже запущен.');
-      return { ...data, activeTimers: { ...data.activeTimers, sleepTimer: { startedAt: new Date().toISOString(), isNightSleep } } };
+      return { ...data, activeTimers: { ...data.activeTimers, sleepTimer: { startedAt: this.startedAt(minutesAgo), isNightSleep } } };
     });
+    this.clock.refresh();
   }
 
   async stopSleep(): Promise<SleepEvent | null> {
@@ -40,16 +41,17 @@ export class ActiveTimerService {
     return this.storage.update(data => ({ ...data, activeTimers: { ...data.activeTimers, sleepTimer: null } }));
   }
 
-  startBreastfeeding(side: BreastSide): Promise<void> {
-    if (!isBreastSide(side)) return Promise.reject(new Error('Выберите левую или правую грудь.'));
-    return this.storage.update(data => {
+  async startBreastfeeding(side: BreastSide, minutesAgo = 0): Promise<void> {
+    if (!isBreastSide(side)) throw new Error('Выберите левую или правую грудь.');
+    await this.storage.update(data => {
       if (data.activeTimers.breastTimer) throw new Error('Таймер кормления уже запущен.');
-      const startedAt = new Date().toISOString();
+      const startedAt = this.startedAt(minutesAgo);
       return { ...data, activeTimers: { ...data.activeTimers, breastTimer: {
         startedAt, activeSide: side, currentSideStartedAt: startedAt,
         accumulatedLeftSec: 0, accumulatedRightSec: 0, lastActiveSide: side,
       } } };
     });
+    this.clock.refresh();
   }
 
   switchBreast(side: BreastSide): Promise<void> {
@@ -93,6 +95,11 @@ export class ActiveTimerService {
 
   cancelBreastfeeding(): Promise<void> {
     return this.storage.update(data => ({ ...data, activeTimers: { ...data.activeTimers, breastTimer: null } }));
+  }
+
+  private startedAt(minutesAgo: number): string {
+    if (!Number.isInteger(minutesAgo) || minutesAgo < 0 || minutesAgo > 60) throw new Error('Выберите от 0 до 60 минут.');
+    return new Date(Date.now() - minutesAgo * 60_000).toISOString();
   }
 
   private sideDuration(side: BreastSide): number {
