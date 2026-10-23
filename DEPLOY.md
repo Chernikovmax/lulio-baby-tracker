@@ -51,6 +51,19 @@ adb install -r lulio-baby-tracker-v<VERSION>.apk
 
 Replace `<VERSION>` with the numeric version. Compare the public signer certificate fingerprint with the trusted previous release; checksum agreement alone does not establish publisher identity. Confirm package ID, version name/code using SDK APK inspection tools. On a real device, verify launch, diary entry/timer persistence after restart, and, where a previous signed release is available, an in-place update retaining data. Never uninstall or clear storage to disguise a failed update. Record unavailable device/update checks as unverified.
 
+### Android 1.2.0 publication receipt (2026-10-23)
+
+- **Release:** https://github.com/Chernikovmax/lulio-baby-tracker/releases/tag/v1.2.0 — published at **19:50:32Z**, not draft or prerelease, marked latest.
+- **APK source:** exact commit `e2e2c30c9fc6c78e4b34069d6bc562c3590d5cd2`, including saved-record timestamp editing from `a5a7c65`. Remote `main` already pointed to this revision; the new `v1.2.0` tag was pushed at exactly this commit without moving any existing tag. This documentation receipt is subsequent evidence, not APK source.
+- **Isolation and checks:** all release commands ran in the physical checkout `/Users/chernikovmax/orca/workspaces/lulio-android-v1.1.1`, not the shared virtual workspace/root. Node **22.23.2**; sequential `npm ci`, `npx tsc --noEmit`, `npm run build`, `npx ng test --watch=false` passed (**70 tests, 15 files**).
+- **CI:** https://github.com/Chernikovmax/lulio-baby-tracker/actions/runs/40013796967 — completed successfully at the source commit; both **build** and **release** jobs succeeded, including signing and publication.
+- **Downloaded release bytes:** actual GitHub Release attachments `lulio-baby-tracker-v1.2.0.apk` and `SHA256SUMS`, retained locally under `dist/android-release-verification/v1.2.0/`. `shasum -a 256 -c SHA256SUMS` passed. APK SHA-256: `3798fca1f09cfebbf558ba9256725020cb188a09ace29ad7fdaa7c6e85eb9eef`.
+- **Independent APK inspection:** installed Android build-tools **35.0.0** `apksigner verify --verbose --print-certs` passed with one signer and v2/v3 signatures; `zipalign -c -p 4` passed. `aapt dump badging` confirmed package **io.ionic.starter**, versionName **1.2.0**, versionCode **1002000**, min SDK **24**, target SDK **36**.
+- **Signing continuity:** downloaded trusted previous release **v1.1.1**, checked its published checksum and signature, and compared public signer certificate SHA-256 fingerprints. Both are `caf549bd5fdb2248856e820b70efbda2c895890328eee189fa512df35156ee13`. No private signing material was accessed or identity replaced.
+- **Limits:** `adb devices -l` listed no connected devices. Physical installation, launch, in-place update, and diary/timer persistence after restart remain **unverified**. Parent-reported browser scenarios are not physical Android acceptance.
+- **Scope:** Android only; no PWA deployment, source/version changes, generated Android edits, root staged artifacts, or unrelated research/sync work were touched. CI emitted action-runtime/setup-java deprecation notices; these did not fail either job.
+
+
 ## PWA → Yandex Object Storage
 
 ### Current local configuration and required hosting decisions
