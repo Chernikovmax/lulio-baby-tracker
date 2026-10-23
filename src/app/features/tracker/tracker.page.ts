@@ -1,6 +1,6 @@
 import { DatePipe, registerLocaleData } from '@angular/common';
 import localeRu from '@angular/common/locales/ru';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import {
   IonButton, IonContent, IonFooter, IonIcon, IonItem, IonItemOptions, IonItemSliding, IonList,
   IonItemOption, IonLabel, IonSegment, IonSegmentButton, IonSpinner, IonText,
@@ -40,7 +40,12 @@ const localDayStart = (date: Date): number => new Date(date.getFullYear(), date.
 export class TrackerPage {
   private readonly storage = inject(StorageService);
   private readonly clock = inject(ClockService);
-  readonly selectedDate = signal(localDayStart(new Date()));
+  readonly todayStart = computed(() => localDayStart(new Date(this.clock.now())));
+  readonly selectedDate = linkedSignal<number, number>({
+    source: this.todayStart,
+    computation: (today, previous) =>
+      !previous || previous.value === previous.source ? today : previous.value,
+  });
   readonly filter = signal<EventFilter>('all');
   readonly sleepModalOpen = signal(false);
   readonly feedingModalOpen = signal(false);
@@ -51,7 +56,6 @@ export class TrackerPage {
   readonly profile = this.storage.profile;
   readonly isLoading = this.storage.isLoading;
   readonly storageError = this.storage.error;
-  readonly todayStart = computed(() => localDayStart(new Date(this.clock.now())));
   readonly isToday = computed(() => this.selectedDate() === this.todayStart());
   readonly dateLabel = computed(() => new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(this.selectedDate())));
   readonly babyAge = computed(() => {
