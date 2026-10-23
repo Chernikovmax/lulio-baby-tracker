@@ -6,7 +6,7 @@ import {
   IonItemOption, IonLabel, IonSegment, IonSegmentButton, IonSpinner, IonText,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { calendarOutline, chevronBack, chevronForward, trashOutline } from 'ionicons/icons';
+import { calendarOutline, chevronBack, chevronForward, createOutline, trashOutline } from 'ionicons/icons';
 import type { AnyTrackerEvent, SleepEvent } from '../../core/models/tracker.models';
 import { ClockService } from '../../core/services/clock.service';
 import { StorageService } from '../../core/services/storage.service';
@@ -17,6 +17,7 @@ import { QuickActionDockComponent } from '../../shared/components/quick-action-d
 import { SleepModalComponent } from '../../shared/components/modals/sleep-modal/sleep-modal.component';
 import { FeedingModalComponent } from '../../shared/components/modals/feeding-modal/feeding-modal.component';
 import { DiaperModalComponent } from '../../shared/components/modals/diaper-modal/diaper-modal.component';
+import { EventTimeModalComponent } from '../../shared/components/modals/event-time-modal/event-time-modal.component';
 
 type EventFilter = 'all' | 'sleep' | 'food' | 'diaper';
 type FeedRow = { kind: 'event'; event: AnyTrackerEvent } | { kind: 'wake'; seconds: number; beforeId: string };
@@ -34,7 +35,7 @@ const localDayStart = (date: Date): number => new Date(date.getFullYear(), date.
     DatePipe, DurationFormatPipe, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonList,
     IonItemSliding, IonItemOptions, IonItemOption, IonLabel, IonSegment, IonSegmentButton,
     IonSpinner, IonText, LiveStatusBannerComponent, QuickActionDockComponent,
-    SleepModalComponent, FeedingModalComponent, DiaperModalComponent,
+    SleepModalComponent, FeedingModalComponent, DiaperModalComponent, EventTimeModalComponent,
   ],
 })
 export class TrackerPage {
@@ -50,6 +51,7 @@ export class TrackerPage {
   readonly sleepModalOpen = signal(false);
   readonly feedingModalOpen = signal(false);
   readonly diaperModalOpen = signal(false);
+  readonly editingEvent = signal<AnyTrackerEvent | null>(null);
   readonly feedingInitialTab = signal<'breastfeeding' | 'bottle'>('breastfeeding');
   readonly deletingIds = signal<ReadonlySet<string>>(new Set());
   readonly errorMessage = signal<string | null>(null);
@@ -136,7 +138,7 @@ export class TrackerPage {
 
   constructor() {
     registerLocaleData(localeRu);
-    addIcons({ calendarOutline, chevronBack, chevronForward, trashOutline });
+    addIcons({ calendarOutline, chevronBack, chevronForward, createOutline, trashOutline });
   }
 
   goToday(): void { this.selectedDate.set(this.todayStart()); }

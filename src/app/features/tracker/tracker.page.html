@@ -60,6 +60,9 @@
                       @if (eventDuration(row.event); as duration) { <small>{{ duration | durationFormat:'human' }}</small> }
                       @if (row.event.note) { <small>{{ row.event.note }}</small> }
                     </div>
+                    <ion-button slot="end" fill="clear" [disabled]="deletingIds().has(row.event.id)" [attr.aria-label]="'Редактировать время: ' + eventTitle(row.event)" (click)="editingEvent.set(row.event)">
+                      <ion-icon slot="icon-only" name="create-outline" aria-hidden="true"></ion-icon>
+                    </ion-button>
                     <ion-button slot="end" fill="clear" color="medium" [disabled]="deletingIds().has(row.event.id)" [attr.aria-label]="'Удалить: ' + eventTitle(row.event)" (click)="deleteEvent(row.event, sliding)">
                       <ion-icon slot="icon-only" name="trash-outline" aria-hidden="true"></ion-icon>
                     </ion-button>
@@ -81,6 +84,7 @@
   <app-sleep-modal [isOpen]="sleepModalOpen()" (closed)="sleepModalOpen.set(false)"></app-sleep-modal>
   <app-feeding-modal [isOpen]="feedingModalOpen()" [initialTab]="feedingInitialTab()" (closed)="feedingModalOpen.set(false)"></app-feeding-modal>
   <app-diaper-modal [isOpen]="diaperModalOpen()" (closed)="diaperModalOpen.set(false)"></app-diaper-modal>
+  <app-event-time-modal [event]="editingEvent()" (closed)="editingEvent.set(null)"></app-event-time-modal>
 </ion-content>
 <ion-footer>
   <app-quick-action-dock (action)="onDockAction($event)"></app-quick-action-dock>
