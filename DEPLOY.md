@@ -51,6 +51,15 @@ adb install -r lulio-baby-tracker-v<VERSION>.apk
 
 Replace `<VERSION>` with the numeric version. Compare the public signer certificate fingerprint with the trusted previous release; checksum agreement alone does not establish publisher identity. Confirm package ID, version name/code using SDK APK inspection tools. On a real device, verify launch, diary entry/timer persistence after restart, and, where a previous signed release is available, an in-place update retaining data. Never uninstall or clear storage to disguise a failed update. Record unavailable device/update checks as unverified.
 
+### Android 1.3.0 release preparation (2026-10-24)
+
+- Requested baseline: `b0161b6055fa6cca03c91a3a6db8ea1e5abdd513`. Its model declarations prevented TypeScript, production build, and test compilation. The owner explicitly authorized a minimal repair before publication.
+- Repair scope: restore top-level sleep pause declarations/helpers and attach pause fields to sleep events/timers rather than breastfeeding models. No sleep-routine settings, unrelated main changes, application identity, signing identity, or generated Android files are included.
+- Isolated physical checkout: `/Users/chernikovmax/orca/workspaces/lulio-android-v1.1.1`. Node 22.23.2; sequential `npm ci`, `npx tsc --noEmit`, `npm run build`, and `npx ng test --watch=false` passed after the repair.
+- Runtime smoke passed for paused-sleep JSON roundtrip, active timer validation, pause-excluded duration, and rejection of pauses outside event/timer bounds. Physical-device installation, launch, update, and diary/timer retention are unverified; `adb devices -l` found no connected devices.
+- Release version metadata is 1.3.0; expected Android versionCode is 1003000. Publication and downloaded signed-APK verification must be recorded separately after CI succeeds.
+
+
 ## PWA → Yandex Object Storage
 
 ### Current local configuration and required hosting decisions
