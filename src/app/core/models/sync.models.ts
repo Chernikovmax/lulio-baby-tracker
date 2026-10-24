@@ -18,6 +18,17 @@ export interface SyncDocument {
   entries: Record<string, SyncEntry>;
 }
 
+/** Durable outbox and server cursor; kept separate from transport-independent journal packets. */
+export interface SupabaseCheckpoint {
+  scope: string;
+  version: number;
+  pending: Record<string, SyncEntry>;
+}
+export interface SyncResponse {
+  version: number;
+  entries: Record<string, SyncEntry>;
+}
+
 export function isSyncConfig(value: unknown): value is SyncConfig {
   return isRecord(value) && typeof value['enabled'] === 'boolean' &&
     ['url', 'anonKey', 'familyId'].every(key => typeof value[key] === 'string');
@@ -35,6 +46,14 @@ export function isSyncEntries(value: unknown): value is Record<string, SyncEntry
 }
 export function isSyncDocument(value: unknown): value is SyncDocument {
   return isRecord(value) && typeof value['scope'] === 'string' && isSyncEntries(value['entries']);
+}
+export function isSyncResponse(value: unknown): value is SyncResponse {
+  return isRecord(value) && Number.isSafeInteger(value['version']) && (value['version'] as number) >= 0 &&
+    isSyncEntries(value['entries']);
+}
+export function isSupabaseCheckpoint(value: unknown): value is SupabaseCheckpoint {
+  return isRecord(value) && typeof value['scope'] === 'string' &&
+    Number.isSafeInteger(value['version']) && (value['version'] as number) >= 0 && isSyncEntries(value['pending']);
 }
 export function newerEntry(left: SyncEntry, right: SyncEntry): SyncEntry {
   return left.revision > right.revision || (left.revision === right.revision && left.device > right.device) ? left : right;

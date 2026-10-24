@@ -4,9 +4,15 @@ import {
   ActiveTimerState, AnyTrackerEvent, BabyProfile, TrackerBackup, TrackerData,
   isAnyTrackerEvent, isBabyProfile, isTrackerBackup, isTrackerData,
 } from '../models/tracker.models';
-import { SyncDocument, SyncEntry, isSyncDocument, newerEntry } from '../models/sync.models';
+import {
+  SupabaseCheckpoint, SyncDocument, SyncEntry, SyncResponse,
+  isSupabaseCheckpoint, isSyncDocument, isSyncResponse, newerEntry,
+} from '../models/sync.models';
 
-interface StoredData extends TrackerData { sync?: SyncDocument }
+interface StoredData extends TrackerData {
+  sync?: SyncDocument;
+  supabase?: SupabaseCheckpoint;
+}
 
 const STORAGE_KEY = 'baby-tracker.v1';
 const EMPTY_DATA: TrackerData = {
@@ -23,6 +29,10 @@ export class StorageService {
     try { parsed = JSON.parse(value); } catch { throw new Error('Не удалось прочитать сохранённые данные.'); }
     if (!isTrackerData(parsed)) throw new Error('Сохранённые данные имеют неверный формат.');
     if ('sync' in parsed && !isSyncDocument(parsed.sync)) throw new Error('Повреждены данные синхронизации.');
+    if ('supabase' in parsed && (!isSupabaseCheckpoint(parsed.supabase) ||
+      !('sync' in parsed) || (parsed.sync as SyncDocument).scope !== parsed.supabase.scope)) {
+      throw new Error('Повреждён курсор синхронизации.');
+    }
     return parsed;
   });
   private readonly dataResource = resource({ loader: () => this.initialRead });
@@ -33,6 +43,7 @@ export class StorageService {
   readonly events = computed<readonly AnyTrackerEvent[]>(() => this.dataResource.hasValue() ? this.dataResource.value().events : []);
   readonly activeTimers = computed<ActiveTimerState>(() => this.dataResource.hasValue() ? this.dataResource.value().activeTimers : EMPTY_DATA.activeTimers);
   readonly syncDocument = computed(() => this.dataResource.hasValue() ? this.dataResource.value().sync ?? null : null);
+  readonly supabaseCheckpoint = computed(() => this.dataResource.hasValue() ? this.dataResource.value().supabase ?? null : null);
 
   async ready(): Promise<void> {
     const initial = await this.initialRead;
@@ -51,6 +62,7 @@ export class StorageService {
       const next = transform(data);
       if (!data.sync) return next;
       const entries = { ...data.sync.entries };
+      const pending = data.supabase ? { ...data.supabase.pending } : null;
       let revision = Date.now();
       for (const entry of Object.values(entries)) revision = Math.max(revision, entry.revision + 1);
       const previous = new Map(data.events.map(event => [event.id, event]));
@@ -58,14 +70,17 @@ export class StorageService {
       for (const id of new Set([...previous.keys(), ...current.keys()])) {
         if (JSON.stringify(previous.get(id)) !== JSON.stringify(current.get(id))) {
           entries[`event:${id}`] = { revision, device: this.device, value: current.get(id) ?? null };
+          if (pending) pending[`event:${id}`] = entries[`event:${id}`];
         }
       }
       for (const key of ['sleepTimer', 'breastTimer'] as const) {
         if (JSON.stringify(data.activeTimers[key]) !== JSON.stringify(next.activeTimers[key])) {
           entries[key] = { revision, device: this.device, value: next.activeTimers[key] };
+          if (pending) pending[key] = entries[key];
         }
       }
-      return { ...next, sync: { scope: data.sync.scope, entries } };
+      return { ...next, sync: { scope: data.sync.scope, entries },
+        ...(data.supabase && pending ? { supabase: { ...data.supabase, pending } } : {}) };
     });
   }
 
@@ -93,7 +108,31 @@ export class StorageService {
       for (const key of ['sleepTimer', 'breastTimer'] as const) {
         entries[key] = { revision: 0, device: this.device, value: data.activeTimers[key] };
       }
-      return { ...data, sync: { scope, entries } };
+      return { ...data, sync: { scope, entries }, supabase: undefined };
+    });
+  }
+
+  configureSupabaseSync(scope: string): Promise<void> {
+    return this.configureSync(scope).then(() => this.commit(data => {
+      if (data.sync?.scope !== scope || data.supabase?.scope === scope) return data;
+      // Existing installations publish their journal once; subsequent exchanges use only the outbox.
+      return { ...data, supabase: { scope, version: 0, pending: { ...data.sync.entries } } };
+    }));
+  }
+
+  mergeSupabase(scope: string, sinceVersion: number, sent: Record<string, SyncEntry>, remote: SyncResponse): Promise<void> {
+    if (!isSyncResponse(remote) || remote.version < sinceVersion) {
+      return Promise.reject(new Error('Неверный ответ синхронизации.'));
+    }
+    return this.commit(data => {
+      if (data.sync?.scope !== scope || data.supabase?.scope !== scope || data.supabase.version !== sinceVersion) return data;
+      const pending = { ...data.supabase.pending };
+      for (const [key, entry] of Object.entries(sent)) {
+        // A local edit made while the request was in flight must remain in the durable outbox.
+        if (pending[key]?.revision === entry.revision && pending[key]?.device === entry.device) delete pending[key];
+      }
+      return { ...this.mergeEntries(data, { scope, entries: remote.entries }),
+        supabase: { scope, version: remote.version, pending } };
     });
   }
 
@@ -101,20 +140,24 @@ export class StorageService {
     if (!isSyncDocument(remote)) return Promise.reject(new Error('Неверный формат семейных данных.'));
     return this.commit(data => {
       if (data.sync?.scope !== remote.scope) return data;
-      const entries = { ...data.sync.entries };
-      for (const [key, entry] of Object.entries(remote.entries)) {
-        entries[key] = entries[key] ? newerEntry(entries[key], entry) : entry;
-      }
-      const events: AnyTrackerEvent[] = [];
-      for (const [key, entry] of Object.entries(entries)) {
-        if (key.startsWith('event:') && entry.value !== null) events.push(entry.value as AnyTrackerEvent);
-      }
-      const activeTimers: ActiveTimerState = {
-        sleepTimer: (entries['sleepTimer']?.value ?? null) as ActiveTimerState['sleepTimer'],
-        breastTimer: (entries['breastTimer']?.value ?? null) as ActiveTimerState['breastTimer'],
-      };
-      return { ...data, events, activeTimers, sync: { scope: remote.scope, entries } };
+      return this.mergeEntries(data, remote);
     });
+  }
+
+  private mergeEntries(data: StoredData, remote: SyncDocument): StoredData {
+    const entries = { ...data.sync!.entries };
+    for (const [key, entry] of Object.entries(remote.entries)) {
+      entries[key] = entries[key] ? newerEntry(entries[key], entry) : entry;
+    }
+    const events: AnyTrackerEvent[] = [];
+    for (const [key, entry] of Object.entries(entries)) {
+      if (key.startsWith('event:') && entry.value !== null) events.push(entry.value as AnyTrackerEvent);
+    }
+    const activeTimers: ActiveTimerState = {
+      sleepTimer: (entries['sleepTimer']?.value ?? null) as ActiveTimerState['sleepTimer'],
+      breastTimer: (entries['breastTimer']?.value ?? null) as ActiveTimerState['breastTimer'],
+    };
+    return { ...data, events, activeTimers, sync: { scope: remote.scope, entries } };
   }
 
   saveProfile(profile: BabyProfile): Promise<void> {

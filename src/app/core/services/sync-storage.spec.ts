@@ -88,4 +88,66 @@ describe('Устойчивое семейное хранилище', () => {
     const backup = JSON.parse(await first.exportBackup());
     expect(backup).not.toHaveProperty('sync');
   });
+
+  it('подтверждает только отправленную ревизию, сохраняя новую правку и курсор после перезапуска', async () => {
+    let storage = await device();
+    await storage.configureSupabaseSync(scope);
+    await storage.saveEvent(feeding);
+    const sent = structuredClone(storage.supabaseCheckpoint()!.pending);
+    await storage.saveEvent({ ...feeding, volumeMl: 150 });
+    await storage.mergeSupabase(scope, 0, sent, { version: 1, entries: sent });
+    expect(storage.events()).toEqual([{ ...feeding, volumeMl: 150 }]);
+    expect(Object.keys(storage.supabaseCheckpoint()!.pending)).toEqual(['event:bottle']);
+    expect(storage.supabaseCheckpoint()!.pending['event:bottle'].value).toEqual({ ...feeding, volumeMl: 150 });
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    storage = TestBed.inject(StorageService);
+    await storage.ready();
+    await storage.configureSupabaseSync(scope);
+    expect(storage.supabaseCheckpoint()!.version).toBe(1);
+    const pending = storage.supabaseCheckpoint()!.pending;
+    expect(pending['event:bottle'].value).toEqual({ ...feeding, volumeMl: 150 });
+    await storage.mergeSupabase(scope, 1, pending, { version: 2, entries: pending });
+    expect(storage.supabaseCheckpoint()).toEqual({ scope, version: 2, pending: {} });
+    expect(storage.events()).toEqual([{ ...feeding, volumeMl: 150 }]);
+  });
+
+  it('не продвигает курсор и не теряет исходящие изменения при ошибке сохранения ответа', async () => {
+    const storage = await device();
+    await storage.configureSupabaseSync(scope);
+    await storage.saveEvent(feeding);
+    const before = structuredClone(storage.supabaseCheckpoint()!);
+    const deletion = { 'event:bottle': {
+      revision: before.pending['event:bottle'].revision + 1, device: crypto.randomUUID(), value: null,
+    } };
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => { throw new Error('Нет места'); });
+    await expect(storage.mergeSupabase(scope, 0, before.pending, { version: 2, entries: deletion })).rejects.toThrow('Нет места');
+    expect(storage.supabaseCheckpoint()).toEqual(before);
+    expect(storage.events()).toEqual([feeding]);
+    await storage.mergeSupabase(scope, 0, before.pending, { version: 2, entries: deletion });
+    expect(storage.events()).toEqual([]);
+    expect(storage.supabaseCheckpoint()).toEqual({ scope, version: 2, pending: {} });
+    await storage.mergeSupabase(scope, 0, before.pending, { version: 1, entries: before.pending });
+    expect(storage.events()).toEqual([]);
+    expect(storage.supabaseCheckpoint()!.version).toBe(2);
+  });
+
+  it('не переносит курсор другой семьи и не подтверждает её запоздалый ответ', async () => {
+    const storage = await device();
+    await storage.configureSupabaseSync(scope);
+    await storage.saveEvent(feeding);
+    const sent = storage.supabaseCheckpoint()!.pending;
+    await storage.mergeSupabase(scope, 0, sent, { version: 10, entries: sent });
+    const nextScope = 'https://example.supabase.co/22222222-2222-4222-8222-222222222222';
+    await storage.configureSupabaseSync(nextScope);
+    await storage.mergeSupabase(scope, 10, {}, { version: 11, entries: { 'event:bottle': {
+      revision: Number.MAX_SAFE_INTEGER, device: crypto.randomUUID(), value: null,
+    } } });
+    expect(storage.events()).toEqual([feeding]);
+    expect(storage.supabaseCheckpoint()!.scope).toBe(nextScope);
+    expect(storage.supabaseCheckpoint()!.version).toBe(0);
+    expect(storage.supabaseCheckpoint()!.pending['event:bottle'].value).toEqual(feeding);
+    const backup = JSON.parse(await storage.exportBackup());
+    expect(backup).not.toHaveProperty('supabase');
+  });
 });

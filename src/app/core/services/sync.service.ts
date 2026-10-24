@@ -2,7 +2,7 @@ import { DestroyRef, Service, computed, effect, inject, resource, signal, untrac
 import { Preferences } from '@capacitor/preferences';
 import { createClient, RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
-import { SyncConfig, isSyncConfig, isSyncEntries } from '../models/sync.models';
+import { SyncConfig, isSyncConfig, isSyncResponse } from '../models/sync.models';
 import { YANDEX_CONFIG_KEY } from '../models/yandex-sync.models';
 import { StorageService } from './storage.service';
 
@@ -50,18 +50,25 @@ export class SyncService {
       untracked(() => { void this.connect(config); });
     });
     effect(() => {
-      this.storage.syncDocument();
-      untracked(() => this.requestSync());
+      const checkpoint = this.storage.supabaseCheckpoint();
+      if (checkpoint && Object.keys(checkpoint.pending).length) untracked(() => this.requestSync());
     });
-    // Pull after missed Realtime messages / suspension; the persistent register journal is the outbox.
+    // Realtime is a hint; a small delta poll recovers missed notifications while visible.
     const retry = () => {
-      if (!this.config().enabled) return;
+      if (!this.config().enabled || document.visibilityState === 'hidden') return;
       if (!this.connection && !this.connecting) void this.connect(this.config());
       else this.requestSync();
     };
-    const interval = setInterval(retry, 10_000);
+    let interval: number | undefined;
+    const visible = () => {
+      clearInterval(interval);
+      interval = undefined;
+      if (document.visibilityState === 'hidden') return;
+      interval = window.setInterval(retry, 10_000);
+      retry();
+    };
+    visible();
     globalThis.addEventListener('online', retry);
-    const visible = () => { if (document.visibilityState === 'visible') retry(); };
     document.addEventListener('visibilitychange', visible);
     this.destroyRef.onDestroy(() => {
       clearInterval(interval);
@@ -127,8 +134,10 @@ export class SyncService {
   private async connect(config: SyncConfig): Promise<void> {
     const generation = ++this.generation;
     this.disconnect();
+    this.connecting = false;
     this.error.set(null);
     if (!config.enabled) { this.status.set('Синхронизация выключена'); return; }
+    if (document.visibilityState === 'hidden') return;
     this.status.set('Подключение к семье…');
     this.connecting = true;
     let client: SupabaseClient | undefined;
@@ -138,7 +147,7 @@ export class SyncService {
       await this.storage.ready();
       if (generation !== this.generation) return;
       const scope = `${resolved.url}/${resolved.familyId}`;
-      await this.storage.configureSync(scope);
+      await this.storage.configureSupabaseSync(scope);
       if (generation !== this.generation) return;
       client = createClient(resolved.url, resolved.anonKey, {
         auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -159,9 +168,11 @@ export class SyncService {
         config: { postgres_changes_options: { wait: true } },
       }).on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'tracker_families', filter: `family_id=eq.${resolved.familyId}`,
-      }, () => {
-        // Fetch the current row via the same merge transaction, not a possibly stale notification payload.
-        if (this.connection === connection) this.requestSync();
+      }, payload => {
+        const version: unknown = payload.new['version'];
+        const checkpoint = this.storage.supabaseCheckpoint();
+        if (this.connection === connection && typeof version === 'number' &&
+          checkpoint?.scope === connection.scope && version > checkpoint.version) this.requestSync();
       }).subscribe(status => {
         if (this.connection !== connection) return;
         if (status === 'SUBSCRIBED') {
@@ -185,7 +196,7 @@ export class SyncService {
 
   private requestSync(): void {
     const connection = this.connection;
-    if (!connection?.connected) return;
+    if (!connection?.connected || document.visibilityState === 'hidden') return;
     connection.requested = true;
     if (!connection.running) void this.synchronize(connection);
   }
@@ -193,16 +204,16 @@ export class SyncService {
   private async synchronize(connection: Connection): Promise<void> {
     connection.running = true;
     try {
-      while (connection.requested && this.connection === connection) {
+      while (connection.requested && this.connection === connection && document.visibilityState !== 'hidden') {
         connection.requested = false;
-        const document = this.storage.syncDocument();
-        if (!document || document.scope !== connection.scope) return;
-        const { data, error } = await connection.client.rpc('merge_tracker_family', {
-          target_family: connection.familyId, incoming: document.entries,
+        const checkpoint = this.storage.supabaseCheckpoint();
+        if (!checkpoint || checkpoint.scope !== connection.scope) return;
+        const { data, error } = await connection.client.rpc('exchange_tracker_family', {
+          target_family: connection.familyId, since_version: checkpoint.version, incoming: checkpoint.pending,
         });
         if (this.connection !== connection) return;
-        if (error || !isSyncEntries(data)) throw new Error('Неверный ответ синхронизации.');
-        await this.storage.mergeSync({ scope: connection.scope, entries: data });
+        if (error || !isSyncResponse(data)) throw new Error('Неверный ответ синхронизации.');
+        await this.storage.mergeSupabase(connection.scope, checkpoint.version, checkpoint.pending, data);
         if (this.connection !== connection) return;
         this.error.set(null);
         this.status.set('Семейная синхронизация включена');
