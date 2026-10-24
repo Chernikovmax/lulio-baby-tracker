@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Preferences } from '@capacitor/preferences';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SleepEvent } from '../../../../core/models/tracker.models';
+import type { BreastfeedingEvent, SleepEvent } from '../../../../core/models/tracker.models';
 import { StorageService } from '../../../../core/services/storage.service';
 import { TrackerPage } from '../../../../features/tracker/tracker.page';
 import { EventTimeModalComponent } from './event-time-modal.component';
@@ -16,13 +16,13 @@ const local = (value: string) => {
   return date.toISOString().slice(0, 23);
 };
 
-async function setup() {
+async function setup(event: SleepEvent | BreastfeedingEvent = sleep) {
   TestBed.configureTestingModule({});
   const storage = TestBed.inject(StorageService);
   await storage.ready();
-  await storage.saveEvent(sleep);
+  await storage.saveEvent(event);
   const fixture = TestBed.createComponent(EventTimeModalComponent);
-  fixture.componentRef.setInput('event', sleep);
+  fixture.componentRef.setInput('event', event);
   const modal = fixture.componentInstance;
   modal.prepare();
   return { storage, modal };
@@ -54,6 +54,45 @@ describe('Редактирование времени сохранённых з�
     const restored = TestBed.inject(StorageService);
     await restored.ready();
     expect(restored.events()).toEqual([{ ...sleep, endTime: '2026-10-21T06:00:12.345Z', updatedAt: '2026-10-23T12:00:00.000Z' }]);
+  });
+
+  it('сокращает забытое кормление с часа до времени у каждой груди и восстанавливает исправленную запись', async () => {
+    const feeding: BreastfeedingEvent = { id: 'feeding', type: 'breastfeeding',
+      startTime: '2026-10-23T10:00:00.000Z', endTime: '2026-10-23T11:00:00.000Z',
+      leftDurationSec: 3000, rightDurationSec: 600, lastSide: 'right', note: 'Забыли таймер', updatedAt: '2026-10-23T11:00:00.000Z' };
+    const { storage, modal } = await setup(feeding);
+    modal.timeModel.update(value => ({ ...value, leftMinutes: 5.5, rightMinutes: 0 }));
+    await modal.save();
+    expect(modal.error()).toBe('');
+    const expected = { ...feeding, leftDurationSec: 330, rightDurationSec: 0, lastSide: 'left', endTime: '2026-10-23T10:05:30.000Z', updatedAt: '2026-10-23T12:00:00.000Z' };
+    expect(storage.events()).toEqual([expected]);
+    TestBed.resetTestingModule();
+    const restored = TestBed.inject(StorageService);
+    await restored.ready();
+    expect(restored.events()).toEqual([expected]);
+  });
+
+  it.each([[0, 0], [-1, 5], [5, -1], [NaN, 5], [121, 0]])(
+    'не меняет кормление при недопустимой длительности %s / %s', async (leftMinutes, rightMinutes) => {
+      const feeding: BreastfeedingEvent = { id: 'feeding', type: 'breastfeeding',
+        startTime: '2026-10-23T10:00:00.000Z', endTime: '2026-10-23T11:00:00.000Z',
+        leftDurationSec: 3000, rightDurationSec: 600, lastSide: 'right', updatedAt: '2026-10-23T11:00:00.000Z' };
+      const { storage, modal } = await setup(feeding);
+      modal.timeModel.update(value => ({ ...value, leftMinutes, rightMinutes }));
+      await modal.save();
+      expect(modal.error()).not.toBe('');
+      expect(storage.events()).toEqual([feeding]);
+    },
+  );
+
+  it('обрезает паузы сна по исправленным границам, не возвращая их в длительность', async () => {
+    const pausedSleep: SleepEvent = { ...sleep, pauses: [{ startTime: '2026-10-21T03:00:00.000Z', endTime: '2026-10-21T04:00:00.000Z' }] };
+    const { storage, modal } = await setup(pausedSleep);
+    modal.timeModel.update(value => ({ ...value, endTime: local('2026-10-21T03:30:00.000Z') }));
+    await modal.save();
+    expect(modal.error()).toBe('');
+    expect(storage.events()[0]).toMatchObject({ endTime: '2026-10-21T03:30:00.000Z',
+      pauses: [{ startTime: '2026-10-21T03:00:00.000Z', endTime: '2026-10-21T03:30:00.000Z' }] });
   });
 
   it('не округляет секунды и миллисекунды при сохранении без правок', async () => {

@@ -22,11 +22,16 @@ export interface BaseEvent {
 }
 export interface SleepEvent extends BaseEvent {
   type: 'sleep';
+export interface SleepPause {
+  startTime: string;
+  endTime: string;
+}
   endTime: string;
   isNightSleep: boolean;
   tags?: SleepTag[];
 }
 export interface BreastfeedingEvent extends BaseEvent {
+  pauses?: SleepPause[];
   type: 'breastfeeding';
   endTime: string;
   leftDurationSec: number;
@@ -64,6 +69,8 @@ export interface ActiveSleepTimer {
   isNightSleep: boolean;
 }
 export interface ActiveBreastTimer {
+  pausedAt?: string;
+  pauses?: SleepPause[];
   startedAt: string;
   activeSide: BreastSide | null;
   currentSideStartedAt: string | null;
@@ -123,7 +130,7 @@ function isBaseEvent(value: unknown): value is Record<string, unknown> & BaseEve
 }
 export function isSleepEvent(value: unknown): value is SleepEvent {
   return isBaseEvent(value) && value.type === 'sleep' && isIsoTimestamp(value.endTime) &&
-    typeof value['isNightSleep'] === 'boolean' && (value['tags'] === undefined ||
+    typeof value['isNightSleep'] === 'boolean' && validSleepPauses(value['pauses'], value.startTime, value.endTime) && (value['tags'] === undefined ||
       (Array.isArray(value['tags']) && value['tags'].every(tag => ['crib', 'stroller', 'arms', 'co_sleeping'].includes(tag))));
 }
 export function isBreastfeedingEvent(value: unknown): value is BreastfeedingEvent {
@@ -165,7 +172,9 @@ export function isAnyTrackerEvent(value: unknown): value is AnyTrackerEvent {
   }
 }
 export function isActiveSleepTimer(value: unknown): value is ActiveSleepTimer {
-  return isRecord(value) && isIsoTimestamp(value['startedAt']) && typeof value['isNightSleep'] === 'boolean';
+  return isRecord(value) && isIsoTimestamp(value['startedAt']) && typeof value['isNightSleep'] === 'boolean' &&
+    (value['pausedAt'] === undefined || (isIsoTimestamp(value['pausedAt']) && Date.parse(value['pausedAt']) >= Date.parse(value['startedAt']))) &&
+    validSleepPauses(value['pauses'], value['startedAt'], value['pausedAt']);
 }
 export function isActiveBreastTimer(value: unknown): value is ActiveBreastTimer {
   if (!isRecord(value) || !isIsoTimestamp(value['startedAt']) || !isBreastSide(value['lastActiveSide']) ||
@@ -177,6 +186,33 @@ export function isActiveBreastTimer(value: unknown): value is ActiveBreastTimer 
 export function isActiveTimerState(value: unknown): value is ActiveTimerState {
   return isRecord(value) && (value['sleepTimer'] === null || isActiveSleepTimer(value['sleepTimer'])) &&
     (value['breastTimer'] === null || isActiveBreastTimer(value['breastTimer']));
+
+function validSleepPauses(value: unknown, start: string, end?: string): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  let previousEnd = Date.parse(start);
+  for (const pause of value) {
+    if (!isRecord(pause) || !isIsoTimestamp(pause['startTime']) || !isIsoTimestamp(pause['endTime'])) return false;
+    const from = Date.parse(pause['startTime']), to = Date.parse(pause['endTime']);
+    if (from < previousEnd || to < from || (end !== undefined && to > Date.parse(end))) return false;
+    previousEnd = to;
+  }
+  return true;
+}
+
+/** Actual sleeping intervals, excluding pauses and clipped to the requested bounds. */
+export function sleepIntervals(startTime: string, endTime: string, pauses: readonly SleepPause[] = []): { start: number; end: number }[] {
+  const end = Date.parse(endTime);
+  let cursor = Date.parse(startTime);
+  const intervals: { start: number; end: number }[] = [];
+  for (const pause of pauses) {
+    const from = Math.min(end, Date.parse(pause.startTime));
+    if (from > cursor) intervals.push({ start: cursor, end: from });
+    cursor = Math.max(cursor, Date.parse(pause.endTime));
+  }
+  if (cursor < end) intervals.push({ start: cursor, end });
+  return intervals;
+}
 }
 export function isTrackerData(value: unknown): value is TrackerData {
   return isRecord(value) && (value['profile'] === null || isBabyProfile(value['profile'])) &&

@@ -25,7 +25,8 @@ import { TimerStartOffsetComponent } from '../../timer-start-offset/timer-start-
             <section class="panel">
               @if (timer.sleepTimer(); as running) {
                 <p class="elapsed">{{ timer.sleepDurationSec() | durationFormat:'timer' }}</p>
-                <p>Идёт {{ running.isNightSleep ? 'ночной' : 'дневной' }} сон</p>
+                <p>{{ running.pausedAt ? 'Сон на паузе' : (running.isNightSleep ? 'Идёт ночной сон' : 'Идёт дневной сон') }}</p>
+                <ion-button expand="block" fill="outline" [disabled]="pending()" (click)="togglePause()">{{ running.pausedAt ? 'Продолжить сон' : 'Пауза' }}</ion-button>
                 <ion-button expand="block" [disabled]="pending()" (click)="stop()">Завершить сон</ion-button>
               } @else {
                 <div class="toggle" role="group" aria-label="Тип сна">
@@ -60,8 +61,8 @@ export class SleepModalComponent {
   readonly closed = output<void>();
   readonly timer = inject(ActiveTimerService);
   private readonly storage = inject(StorageService);
-  readonly tab = signal<'timer' | 'manual'>('timer');
   private readonly wake = inject(WakeWindowService);
+  readonly tab = signal<'timer' | 'manual'>('timer');
   readonly night = signal(false);
   readonly minutesAgo = signal(0);
   readonly pending = signal(false);
@@ -70,8 +71,8 @@ export class SleepModalComponent {
   readonly manualForm = form(this.manualModel, path => { required(path.startTime); required(path.endTime); });
   prepare(): void {
     const now = localDateTime();
-    this.minutesAgo.set(0);
     this.night.set(this.wake.isNight());
+    this.minutesAgo.set(0);
     this.manualModel.update(value => ({ ...value, startTime: now, endTime: now }));
     this.error.set('');
   }
@@ -85,6 +86,7 @@ export class SleepModalComponent {
   patchManual(patch: Partial<{ isNightSleep: boolean }>) { this.manualModel.update(model => ({ ...model, ...patch })); }
   async start() { await this.run(async () => { await this.timer.startSleep(this.night(), this.minutesAgo()); this.minutesAgo.set(0); }); }
   async stop() { await this.run(async () => { await this.timer.stopSleep(); }); }
+  async togglePause() { await this.run(() => this.timer.sleepTimer()?.pausedAt ? this.timer.resumeSleep() : this.timer.pauseSleep()); }
   async saveManual() {
     const value = this.manualModel();
     const start = new Date(value.startTime), end = new Date(value.endTime), now = Date.now();
@@ -94,5 +96,5 @@ export class SleepModalComponent {
     const event: SleepEvent = { id: crypto.randomUUID(), type: 'sleep', startTime: start.toISOString(), endTime: end.toISOString(), isNightSleep: value.isNightSleep, ...(value.note.trim() ? { note: value.note.trim() } : {}), updatedAt: new Date().toISOString() };
     await this.run(async () => { await this.storage.saveEvent(event); this.manualForm().reset({ startTime: localDateTime(), endTime: localDateTime(), isNightSleep: false, note: '' }); this.closed.emit(); });
   }
-  private async run(operation: () => Promise<void>) { this.pending.set(true); this.error.set(''); try { await operation(); } catch (reason) { this.error.set(reason instanceof Error ? reason.message : 'Не удалось сохранить данные.'); } finally { this.pending.set(false); } }
+  private async run(operation: () => Promise<void>) { if (this.pending()) return; this.pending.set(true); this.error.set(''); try { await operation(); } catch (reason) { this.error.set(reason instanceof Error ? reason.message : 'Не удалось сохранить данные.'); } finally { this.pending.set(false); } }
 }

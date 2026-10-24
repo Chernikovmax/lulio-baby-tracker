@@ -8,6 +8,7 @@ import {
 import { addIcons } from 'ionicons';
 import { calendarOutline, chevronBack, chevronForward, createOutline, trashOutline } from 'ionicons/icons';
 import type { AnyTrackerEvent, SleepEvent } from '../../core/models/tracker.models';
+import { sleepIntervals } from '../../core/models/tracker.models';
 import { ClockService } from '../../core/services/clock.service';
 import { StorageService } from '../../core/services/storage.service';
 import { DurationFormatPipe } from '../../shared/pipes/duration-format.pipe';
@@ -185,7 +186,7 @@ export class TrackerPage {
     }
   }
   eventDuration(event: AnyTrackerEvent): number | null {
-    if (event.type === 'sleep') return Math.max(0, eventEnd(event) - eventTime(event)) / 1000;
+    if (event.type === 'sleep') return sleepIntervals(event.startTime, event.endTime, event.pauses).reduce((total, interval) => total + interval.end - interval.start, 0) / 1000;
     if (event.type === 'breastfeeding') return event.leftDurationSec + event.rightDurationSec;
     return null;
   }
@@ -195,7 +196,7 @@ export class TrackerPage {
 
   private sleepTotal(sleeps: SleepEvent[], start: number, end: number, night: boolean): number {
     const intervals = sleeps.filter(sleep => sleep.isNightSleep === night && Number.isFinite(eventTime(sleep)) && Number.isFinite(eventEnd(sleep)))
-      .map(sleep => [Math.max(start, eventTime(sleep)), Math.min(end, eventEnd(sleep))] as const)
+      .flatMap(sleep => sleepIntervals(sleep.startTime, sleep.endTime, sleep.pauses).map(interval => [Math.max(start, interval.start), Math.min(end, interval.end)] as const))
       .filter(([from, to]) => to > from)
       .sort((a, b) => a[0] - b[0]);
     let total = 0;

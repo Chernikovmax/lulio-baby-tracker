@@ -8,6 +8,8 @@ import { WakeWindowService } from './wake-window.service';
 import { LeapsService } from './leaps.service';
 import { BabyProfile, isTrackerBackup } from '../models/tracker.models';
 import { DurationFormatPipe } from '../../shared/pipes/duration-format.pipe';
+import { calculateStats } from '../../features/stats/stats-calculations';
+import { TrackerPage } from '../../features/tracker/tracker.page';
 
 const profile: BabyProfile = { id: 'малыш', name: 'Миша', birthDate: '2026-08-01', dueDate: '2026-08-15', gender: 'boy' };
 
@@ -43,6 +45,34 @@ describe('Ядро трекера', () => {
     expect(second).toBeNull();
     expect(core.storage.events().filter(event => event.type === 'sleep')).toEqual([first]);
     expect(core.timers.sleepTimer()).toBeNull();
+  });
+
+  it('сохраняет паузы сна после перезапуска, исключает их из истории и статистики и завершает сон на момент паузы', async () => {
+    let { timers, storage } = await setup();
+    await timers.startSleep(false, 10);
+    await timers.pauseSleep();
+    vi.setSystemTime(new Date('2026-10-20T12:20:00Z'));
+    TestBed.resetTestingModule();
+    ({ timers, storage } = await setup());
+    expect(timers.sleepDurationSec()).toBe(600);
+    await timers.resumeSleep();
+    vi.setSystemTime(new Date('2026-10-20T12:25:00Z'));
+    await timers.pauseSleep();
+    expect(timers.sleepDurationSec()).toBe(900);
+    vi.setSystemTime(new Date('2026-10-20T12:30:00Z'));
+    const event = await timers.stopSleep();
+    expect(event).toMatchObject({ startTime: '2026-10-20T11:50:00.000Z', endTime: '2026-10-20T12:25:00.000Z',
+      pauses: [{ startTime: '2026-10-20T12:00:00.000Z', endTime: '2026-10-20T12:20:00.000Z' }] });
+    const page = TestBed.runInInjectionContext(() => new TrackerPage());
+    expect(page.eventDuration(event!)).toBe(900);
+    expect(page.summary().daytime).toBe(900);
+    const stats = calculateStats(storage.events(), page.todayStart(), 1, Date.now());
+    expect(stats.averageDaySec).toBe(900);
+    expect(stats.averageWakeSec).toBe(1200);
+    expect(isTrackerBackup(JSON.parse(await storage.exportBackup()))).toBe(true);
+    TestBed.resetTestingModule();
+    ({ storage } = await setup());
+    expect(storage.events()).toEqual([event]);
   });
 
   it('восстанавливает кормление с прошлым началом, считает обе груди и исключает паузы', async () => {

@@ -1,5 +1,5 @@
 import { Component, inject, input, output, signal } from '@angular/core';
-import { form, FormField, required } from '@angular/forms/signals';
+import { form, FormField, min, required } from '@angular/forms/signals';
 import { IonButton, IonContent, IonHeader, IonModal, IonTitle, IonToolbar } from '@ionic/angular';
 import type { AnyTrackerEvent } from '../../../../core/models/tracker.models';
 import { StorageService } from '../../../../core/services/storage.service';
@@ -21,11 +21,13 @@ function localTimestamp(value: string): string {
         <ion-content class="sheet-content">
           <form class="panel" (submit)="$event.preventDefault(); save()">
             <label>{{ event()?.endTime ? 'Начало' : 'Время события' }}<input type="datetime-local" step="0.001" [formField]="timeForm.startTime" [readOnly]="pending()"></label>
-            @if (event()?.endTime) {
+            @if (event()?.endTime && event()?.type !== 'breastfeeding') {
               <label>Окончание<input type="datetime-local" step="0.001" [formField]="timeForm.endTime" [readOnly]="pending()"></label>
             }
             @if (event()?.type === 'breastfeeding') {
-              <p>Время у каждой груди остаётся прежним. Интервал должен вмещать суммарное время кормления.</p>
+              <label>Левая грудь, минут<input type="number" step="any" [formField]="timeForm.leftMinutes" [readOnly]="pending()"></label>
+              <label>Правая грудь, минут<input type="number" step="any" [formField]="timeForm.rightMinutes" [readOnly]="pending()"></label>
+              <p>Можно указать дробные минуты. Окончание рассчитывается автоматически: начало плюс время у обеих грудей, без пауз.</p>
             }
             @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
             <ion-button type="button" expand="block" [disabled]="pending()" (click)="save()">{{ pending() ? 'Сохраняем…' : 'Сохранить изменения' }}</ion-button>
@@ -41,12 +43,16 @@ export class EventTimeModalComponent {
   private readonly storage = inject(StorageService);
   readonly pending = signal(false);
   readonly error = signal('');
-  readonly timeModel = signal({ startTime: '', endTime: '' });
-  readonly timeForm = form(this.timeModel, path => { required(path.startTime); });
+  readonly timeModel = signal({ startTime: '', endTime: '', leftMinutes: 0, rightMinutes: 0 });
+  readonly timeForm = form(this.timeModel, path => { required(path.startTime); min(path.leftMinutes, 0); min(path.rightMinutes, 0); });
 
   prepare(): void {
     const event = this.event();
-    this.timeForm().reset({ startTime: event ? localTimestamp(event.startTime) : '', endTime: event?.endTime ? localTimestamp(event.endTime) : '' });
+    this.timeForm().reset({
+      startTime: event ? localTimestamp(event.startTime) : '', endTime: event?.endTime ? localTimestamp(event.endTime) : '',
+      leftMinutes: event?.type === 'breastfeeding' ? event.leftDurationSec / 60 : 0,
+      rightMinutes: event?.type === 'breastfeeding' ? event.rightDurationSec / 60 : 0,
+    });
     this.error.set('');
   }
 
@@ -55,7 +61,12 @@ export class EventTimeModalComponent {
     if (!event || this.pending()) return;
     const value = this.timeModel();
     const start = new Date(value.startTime).getTime();
-    const end = event.endTime ? new Date(value.endTime).getTime() : null;
+    const left = Math.round(Number(value.leftMinutes) * 60_000) / 1000;
+    const right = Math.round(Number(value.rightMinutes) * 60_000) / 1000;
+    if (event.type === 'breastfeeding' && (!Number.isFinite(left) || !Number.isFinite(right) || left < 0 || right < 0 || left + right <= 0)) {
+      this.error.set('Укажите неотрицательное время у каждой груди; сумма должна быть больше нуля.'); return;
+    }
+    const end = event.type === 'breastfeeding' ? start + Math.round((left + right) * 1000) : event.endTime ? new Date(value.endTime).getTime() : null;
     if (!Number.isFinite(start) || (end !== null && !Number.isFinite(end))) {
       this.error.set('Укажите корректные дату и время.'); return;
     }
@@ -71,10 +82,17 @@ export class EventTimeModalComponent {
       await this.storage.update(data => {
         const current = data.events.find(item => item.id === event.id);
         if (!current) throw new Error('Запись уже удалена. Закройте окно и проверьте историю.');
-        if (current.type === 'breastfeeding' && end !== null && current.leftDurationSec + current.rightDurationSec > (end - start) / 1000) {
-          throw new Error('Интервал короче суммарного времени кормления у обеих грудей.');
-        }
-        const updated = { ...current, startTime: new Date(start).toISOString(), ...(end !== null ? { endTime: new Date(end).toISOString() } : {}), updatedAt: new Date().toISOString() };
+        const durations = current.type === 'breastfeeding' ? {
+          leftDurationSec: left, rightDurationSec: right,
+          lastSide: (current.lastSide === 'left' ? left : right) > 0 ? current.lastSide : left > 0 ? 'left' as const : 'right' as const,
+        } : {};
+        const pauses = current.type === 'sleep' && current.pauses && end !== null ? {
+          pauses: current.pauses.flatMap(pause => {
+            const from = Math.max(start, Date.parse(pause.startTime)), to = Math.min(end, Date.parse(pause.endTime));
+            return to > from ? [{ startTime: new Date(from).toISOString(), endTime: new Date(to).toISOString() }] : [];
+          }),
+        } : {};
+        const updated = { ...current, ...durations, ...pauses, startTime: new Date(start).toISOString(), ...(end !== null ? { endTime: new Date(end).toISOString() } : {}), updatedAt: new Date().toISOString() };
         return { ...data, events: data.events.map(item => item.id === event.id ? updated : item) };
       });
       this.closed.emit();

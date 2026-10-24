@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { IonBadge, IonButton, IonCard, IonCardContent, IonProgressBar } from '@ionic/angular';
 import { ActiveTimerService } from '../../../core/services/active-timer.service';
 import { WakeWindowService } from '../../../core/services/wake-window.service';
@@ -10,8 +10,12 @@ import { DurationFormatPipe } from '../../pipes/duration-format.pipe';
   template: `
     <ion-card>
       <ion-card-content>
-        <div class="heading">{{ timers.sleepTimer() ? 'Малыш спит' : 'Бодрствование' }} <ion-badge>{{ timers.sleepTimer() ? (timers.sleepTimer()?.isNightSleep ? 'Ночной сон' : 'Дневной сон') : 'Сейчас' }}</ion-badge></div>
+        <div class="heading">{{ timers.sleepTimer() ? (timers.sleepTimer()?.pausedAt ? 'Сон на паузе' : 'Малыш спит') : 'Бодрствование' }} <ion-badge>{{ timers.sleepTimer() ? (timers.sleepTimer()?.isNightSleep ? 'Ночной сон' : 'Дневной сон') : 'Сейчас' }}</ion-badge></div>
         <div class="timer" role="timer" [attr.aria-label]="timers.sleepTimer() ? 'Длительность сна' : 'Длительность бодрствования'">{{ (timers.sleepTimer() ? timers.sleepDurationSec() : wake.wakeDurationSec()) | durationFormat:'timer' }}</div>
+        @if (timers.sleepTimer(); as sleep) {
+          <ion-button class="sleep-pause" expand="block" fill="outline" [disabled]="pending()" (click)="toggleSleepPause()">{{ sleep.pausedAt ? 'Продолжить сон' : 'Пауза сна' }}</ion-button>
+        }
+        @if (error()) { <p class="danger" role="alert">{{ error() }}</p> }
         @if (!timers.sleepTimer() && !wake.isNight()) {
           @if (wake.norm(); as norm) {
             <p>Ориентир: {{ norm.minWakeMinutes * 60 | durationFormat }} — {{ norm.maxWakeMinutes * 60 | durationFormat }}</p>
@@ -36,12 +40,15 @@ import { DurationFormatPipe } from '../../pipes/duration-format.pipe';
     p { margin: 8px 0; } ion-progress-bar { margin-top: 14px; height: 6px; border-radius: 4px; }
     ion-button { min-height: 44px; margin: 0; } ion-button ion-badge { margin-left: 8px; }
     .feeding { border-top: 1px solid #333; padding-top: 12px; margin-top: 16px; }
+    ion-button.sleep-pause { min-height: 52px; }
     .warning { color: var(--ion-color-warning); } .danger { color: var(--ion-color-danger); }
   `,
 })
 export class LiveStatusBannerComponent {
   readonly timers = inject(ActiveTimerService);
   readonly wake = inject(WakeWindowService);
+  readonly pending = signal(false);
+  readonly error = signal('');
   readonly progress = computed(() => Math.min(1, Math.max(0, this.wake.normProgressRatio() ?? 0)));
   readonly color = computed(() => this.wake.status() === 'overtired' ? 'danger' : this.wake.status() === 'approaching' ? 'warning' : 'success');
   readonly statusText = computed(() => {
@@ -54,5 +61,18 @@ export class LiveStatusBannerComponent {
   });
   toggleSide(): void {
     this.wake.selectedNextBreastSide.update(side => side === 'left' ? 'right' : 'left');
+  }
+  async toggleSleepPause(): Promise<void> {
+    if (this.pending()) return;
+    this.pending.set(true);
+    this.error.set('');
+    try {
+      if (this.timers.sleepTimer()?.pausedAt) await this.timers.resumeSleep();
+      else await this.timers.pauseSleep();
+    } catch (reason) {
+      this.error.set(reason instanceof Error ? reason.message : 'Не удалось изменить таймер сна.');
+    } finally {
+      this.pending.set(false);
+    }
   }
 }

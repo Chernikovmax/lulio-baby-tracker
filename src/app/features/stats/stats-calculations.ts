@@ -1,4 +1,5 @@
 import type { AnyTrackerEvent, SleepEvent } from '../../core/models/tracker.models';
+import { sleepIntervals } from '../../core/models/tracker.models';
 
 interface Interval { start: number; end: number; }
 export interface PatternBlock { start: number; end: number; night: boolean; label: string; }
@@ -30,7 +31,7 @@ export function calculateStats(events: readonly AnyTrackerEvent[], today: number
   const sleeps = events.filter((event): event is SleepEvent => event.type === 'sleep' && Date.parse(event.endTime) <= now);
   const categories = [false, true].map(night => ({
     night,
-    intervals: merge(sleeps.filter(sleep => sleep.isNightSleep === night).map(sleep => ({ start: Date.parse(sleep.startTime), end: Date.parse(sleep.endTime) }))),
+    intervals: merge(sleeps.filter(sleep => sleep.isNightSleep === night).flatMap(sleep => sleepIntervals(sleep.startTime, sleep.endTime, sleep.pauses))),
   }));
   const feedings = events.filter(event => ['breastfeeding', 'bottle', 'solids'].includes(event.type) && Date.parse(event.startTime) <= now);
   const days: PatternDay[] = [];
@@ -65,7 +66,7 @@ export function calculateStats(events: readonly AnyTrackerEvent[], today: number
       })),
     });
   }
-  const mergedSleeps = merge(sleeps.map(sleep => ({ start: Date.parse(sleep.startTime), end: Date.parse(sleep.endTime) })));
+  const mergedSleeps = merge(sleeps.flatMap(sleep => sleepIntervals(sleep.startTime, sleep.endTime, sleep.pauses)));
   const gaps: number[] = [];
   for (let index = 1; index < mergedSleeps.length; index++) {
     const sleep = mergedSleeps[index];

@@ -11,7 +11,9 @@ export class ActiveTimerService {
   readonly breastTimer = computed(() => this.storage.activeTimers().breastTimer);
   readonly sleepDurationSec = computed(() => {
     const timer = this.sleepTimer();
-    return timer ? Math.floor(Math.max(0, this.clock.now() - Date.parse(timer.startedAt)) / 1000) : 0;
+    if (!timer) return 0;
+    const pausedMs = timer.pauses?.reduce((total, pause) => total + Date.parse(pause.endTime) - Date.parse(pause.startTime), 0) ?? 0;
+    return Math.floor(Math.max(0, (timer.pausedAt ? Date.parse(timer.pausedAt) : this.clock.now()) - Date.parse(timer.startedAt) - pausedMs) / 1000);
   });
   readonly leftDurationSec = computed(() => this.sideDuration('left'));
   readonly rightDurationSec = computed(() => this.sideDuration('right'));
@@ -25,13 +27,36 @@ export class ActiveTimerService {
     this.clock.refresh();
   }
 
+  pauseSleep(): Promise<void> {
+    return this.storage.update(data => {
+      const timer = data.activeTimers.sleepTimer;
+      if (!timer || timer.pausedAt) return data;
+      const lastEnd = timer.pauses?.at(-1)?.endTime ?? timer.startedAt;
+      const pausedAt = new Date(Math.max(Date.now(), Date.parse(lastEnd))).toISOString();
+      return { ...data, activeTimers: { ...data.activeTimers, sleepTimer: { ...timer, pausedAt } } };
+    });
+  }
+
+  async resumeSleep(): Promise<void> {
+    await this.storage.update(data => {
+      const timer = data.activeTimers.sleepTimer;
+      if (!timer?.pausedAt) return data;
+      const { pausedAt, ...running } = timer;
+      const endTime = new Date(Math.max(Date.now(), Date.parse(pausedAt))).toISOString();
+      return { ...data, activeTimers: { ...data.activeTimers, sleepTimer: {
+        ...running, pauses: [...(timer.pauses ?? []), { startTime: pausedAt, endTime }],
+      } } };
+    });
+    this.clock.refresh();
+  }
+
   async stopSleep(): Promise<SleepEvent | null> {
     let event: SleepEvent | null = null;
     await this.storage.update(data => {
       const timer = data.activeTimers.sleepTimer;
       if (!timer) return data;
-      const endTime = new Date(Math.max(Date.now(), Date.parse(timer.startedAt))).toISOString();
-      event = { id: crypto.randomUUID(), type: 'sleep', startTime: timer.startedAt, endTime, updatedAt: endTime, isNightSleep: timer.isNightSleep };
+      const endTime = timer.pausedAt ?? new Date(Math.max(Date.now(), Date.parse(timer.pauses?.at(-1)?.endTime ?? timer.startedAt))).toISOString();
+      event = { id: crypto.randomUUID(), type: 'sleep', startTime: timer.startedAt, endTime, updatedAt: new Date().toISOString(), isNightSleep: timer.isNightSleep, ...(timer.pauses?.length ? { pauses: timer.pauses } : {}) };
       return { ...data, events: [...data.events, event], activeTimers: { ...data.activeTimers, sleepTimer: null } };
     });
     return event;

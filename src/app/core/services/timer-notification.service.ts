@@ -24,9 +24,12 @@ export class TimerNotificationService {
     const accumulated = !breast ? 0 : breast.activeSide === 'left'
       ? breast.accumulatedLeftSec + Math.floor(breast.accumulatedRightSec)
       : Math.floor(breast.accumulatedLeftSec) + breast.accumulatedRightSec;
+    const sleepPausedMs = sleep?.pauses?.reduce((total, pause) => total + Date.parse(pause.endTime) - Date.parse(pause.startTime), 0) ?? 0;
     return {
       sleepWake: sleep
-        ? { title: sleep.isNightSleep ? 'Ночной сон' : 'Дневной сон', startedAt: Date.parse(sleep.startedAt), elapsedSeconds: 0 }
+        ? { title: `${sleep.isNightSleep ? 'Ночной сон' : 'Дневной сон'}${sleep.pausedAt ? ' · пауза' : ''}`,
+          startedAt: sleep.pausedAt ? null : Date.parse(sleep.startedAt) + sleepPausedMs,
+          elapsedSeconds: sleep.pausedAt ? Math.floor((Date.parse(sleep.pausedAt) - Date.parse(sleep.startedAt) - sleepPausedMs) / 1000) : 0 }
         : lastWake ? { title: 'Бодрствование', startedAt: Date.parse(lastWake), elapsedSeconds: 0 } : null,
       breastfeeding: breast ? {
         title: breast.activeSide === null ? 'Грудное кормление · пауза' : `Кормление · ${breast.activeSide === 'left' ? 'левая' : 'правая'} грудь`,
