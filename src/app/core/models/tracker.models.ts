@@ -20,18 +20,18 @@ export interface BaseEvent {
   note?: string;
   updatedAt: string;
 }
-export interface SleepEvent extends BaseEvent {
-  type: 'sleep';
 export interface SleepPause {
   startTime: string;
   endTime: string;
 }
+export interface SleepEvent extends BaseEvent {
+  type: 'sleep';
   endTime: string;
   isNightSleep: boolean;
+  pauses?: SleepPause[];
   tags?: SleepTag[];
 }
 export interface BreastfeedingEvent extends BaseEvent {
-  pauses?: SleepPause[];
   type: 'breastfeeding';
   endTime: string;
   leftDurationSec: number;
@@ -67,10 +67,10 @@ export type AnyTrackerEvent = SleepEvent | BreastfeedingEvent | BottleEvent | So
 export interface ActiveSleepTimer {
   startedAt: string;
   isNightSleep: boolean;
-}
-export interface ActiveBreastTimer {
   pausedAt?: string;
   pauses?: SleepPause[];
+}
+export interface ActiveBreastTimer {
   startedAt: string;
   activeSide: BreastSide | null;
   currentSideStartedAt: string | null;
@@ -186,6 +186,7 @@ export function isActiveBreastTimer(value: unknown): value is ActiveBreastTimer 
 export function isActiveTimerState(value: unknown): value is ActiveTimerState {
   return isRecord(value) && (value['sleepTimer'] === null || isActiveSleepTimer(value['sleepTimer'])) &&
     (value['breastTimer'] === null || isActiveBreastTimer(value['breastTimer']));
+}
 
 function validSleepPauses(value: unknown, start: string, end?: string): boolean {
   if (value === undefined) return true;
@@ -212,7 +213,6 @@ export function sleepIntervals(startTime: string, endTime: string, pauses: reado
   }
   if (cursor < end) intervals.push({ start: cursor, end });
   return intervals;
-}
 }
 export function isTrackerData(value: unknown): value is TrackerData {
   return isRecord(value) && (value['profile'] === null || isBabyProfile(value['profile'])) &&
