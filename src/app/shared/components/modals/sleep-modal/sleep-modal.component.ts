@@ -5,6 +5,7 @@ import { DurationFormatPipe } from '../../../pipes/duration-format.pipe';
 import type { SleepEvent } from '../../../../core/models/tracker.models';
 import { ActiveTimerService } from '../../../../core/services/active-timer.service';
 import { StorageService } from '../../../../core/services/storage.service';
+import { WakeWindowService } from '../../../../core/services/wake-window.service';
 import { RussianSheetDirective } from '../russian-sheet.directive';
 import { localDateTime } from '../../../local-date-time';
 import { TimerStartOffsetComponent } from '../../timer-start-offset/timer-start-offset.component';
@@ -60,6 +61,7 @@ export class SleepModalComponent {
   readonly timer = inject(ActiveTimerService);
   private readonly storage = inject(StorageService);
   readonly tab = signal<'timer' | 'manual'>('timer');
+  private readonly wake = inject(WakeWindowService);
   readonly night = signal(false);
   readonly minutesAgo = signal(0);
   readonly pending = signal(false);
@@ -69,10 +71,17 @@ export class SleepModalComponent {
   prepare(): void {
     const now = localDateTime();
     this.minutesAgo.set(0);
+    this.night.set(this.wake.isNight());
     this.manualModel.update(value => ({ ...value, startTime: now, endTime: now }));
     this.error.set('');
   }
-  setTab(value: string | number | undefined) { if (value === 'timer' || value === 'manual') { this.tab.set(value); this.error.set(''); } }
+  setTab(value: string | number | undefined) {
+    if (value === 'timer' || value === 'manual') {
+      if (value === 'timer' && this.tab() !== 'timer') this.night.set(this.wake.isNight());
+      this.tab.set(value);
+      this.error.set('');
+    }
+  }
   patchManual(patch: Partial<{ isNightSleep: boolean }>) { this.manualModel.update(model => ({ ...model, ...patch })); }
   async start() { await this.run(async () => { await this.timer.startSleep(this.night(), this.minutesAgo()); this.minutesAgo.set(0); }); }
   async stop() { await this.run(async () => { await this.timer.stopSleep(); }); }
