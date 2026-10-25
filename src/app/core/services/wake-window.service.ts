@@ -3,6 +3,7 @@ import { WAKE_NORMS } from '../constants/wake-norms.const';
 import { BreastfeedingEvent, BreastSide, WakeStatusLevel } from '../models/tracker.models';
 import { ClockService } from './clock.service';
 import { StorageService } from './storage.service';
+import { calendarAgeMonths, routineDate } from './sleep-calendar';
 
 const DAY_MS = 86_400_000;
 
@@ -19,8 +20,12 @@ export class WakeWindowService {
     return Math.max(0, Math.floor((today - Date.parse(`${profile.birthDate}T00:00:00Z`)) / DAY_MS));
   });
   readonly norm = computed(() => {
-    const age = this.ageDays();
-    return age === null ? null : WAKE_NORMS.find(item => age >= item.minAgeDays && (item.maxAgeDays === null || age <= item.maxAgeDays)) ?? null;
+    const profile = this.storage.profile();
+    if (!profile) return null;
+    const months = calendarAgeMonths(profile.birthDate, routineDate(this.clock.now(),
+      this.storage.sleepRoutine()?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone));
+    if (months < 0 || months >= 18) return null;
+    return WAKE_NORMS[months < 6 ? months : months < 8 ? 6 : months < 12 ? 7 : 8];
   });
   readonly isSleeping = computed(() => this.storage.activeTimers().sleepTimer !== null);
   readonly isNight = computed(() => {

@@ -8,6 +8,9 @@ import { SyncService } from './sync.service';
 import { YandexAuthService } from './yandex-auth.service';
 import { YandexSyncService } from './yandex-sync.service';
 import { YANDEX_CONFIG_KEY, YANDEX_MARKER, yandexScope, type YandexPacket } from '../models/yandex-sync.models';
+import { sleepBoundary, type HistoryAssertion } from '../models/sleep-history.models';
+import type { SleepEvent } from '../models/tracker.models';
+import { calculateSleepForecast } from './sleep-forecast';
 
 vi.mock('@capacitor/preferences', () => ({
   Preferences: { get: async () => ({ value: null }), set: async () => undefined },
@@ -65,7 +68,7 @@ describe('Ручной обмен через семейную папку', () =>
       return reply(500, {});
     });
   });
-  afterEach(() => { injectors.forEach(injector => injector.destroy()); TestBed.resetTestingModule(); vi.restoreAllMocks(); });
+  afterEach(() => { injectors.forEach(injector => injector.destroy()); TestBed.resetTestingModule(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
   async function device(saved = new Map<string, string>()) {
     activePreferences = saved;
@@ -83,6 +86,91 @@ describe('Ручной обмен через семейную папку', () =>
       async run(action: () => Promise<void>) { activePreferences = saved; await action(); },
     };
   }
+
+  it('передаёт режим, принимает историю v1 и сохраняет явную смену пояса у второго родителя', async () => {
+    const routine = { version: 1 as const, timeZone: 'Europe/Moscow', nightStartFrom: '23:00', nightStartTo: '01:00',
+      daytimeNaps: 2, dayPreparationMinutes: 15, nightPreparationMinutes: 30, assistantEnabled: false };
+    const first = await device();
+    await first.run(() => first.sync.connect(settings));
+    await first.run(() => first.storage.saveSleepRoutine(routine));
+    disk.set(`/Семья/baby-tracker-${familyId}-00000000-0000-4000-8000-000000000000.json`, {
+      format: 'baby-tracker-sync', version: 1, familyId, document: { scope: yandexScope(familyId),
+        entries: { 'event:bottle': { revision: 1, device: '00000000-0000-4000-8000-000000000000', value: bottle } } },
+    });
+    await first.run(() => first.sync.synchronize());
+    const second = await device();
+    await second.run(() => second.sync.connect(settings));
+    await second.run(() => second.sync.synchronize());
+    expect(second.sync.error()).toBe('');
+    expect(second.storage.sleepRoutine()).toEqual(routine);
+    expect(second.storage.events()).toEqual([bottle]);
+    await second.run(() => second.storage.saveSleepRoutine({ ...routine, timeZone: 'America/New_York', assistantEnabled: true }));
+    await second.run(() => second.sync.synchronize());
+    await first.run(() => first.sync.synchronize());
+    expect(first.storage.sleepRoutine()).toEqual({ ...routine, timeZone: 'America/New_York', assistantEnabled: true });
+    const restarted = await device(first.saved);
+    expect(restarted.storage.sleepRoutine()).toEqual(first.storage.sleepRoutine());
+    const packets = [...disk.values()].filter((value): value is YandexPacket =>
+      typeof value === 'object' && value !== null && 'format' in value && value.format === 'baby-tracker-sync');
+    for (const packet of packets) {
+      expect(packet.document.entries).not.toHaveProperty('profile');
+      expect(packet.document.entries).not.toHaveProperty('deviceReminderSettings');
+      expect(packet.document.entries).not.toHaveProperty('pushSubscription');
+    }
+  });
+
+  it('обменивается подтверждениями пробуждения и полноты с удалениями и сохраняет их после перезапуска', async () => {
+    const first = await device(); await first.run(() => first.sync.connect(settings));
+    const night: SleepEvent = { id: 'night', type: 'sleep', startTime: '2026-01-01T00:00:00Z',
+      endTime: '2026-01-01T06:00:00Z', updatedAt: '2026-01-01T06:00:00Z', isNightSleep: true };
+    const nap: SleepEvent = { ...night, id: 'nap', startTime: '2026-01-01T08:00:00Z', endTime: '2026-01-01T09:00:00Z', isNightSleep: false };
+    const wake = { id: '22222222-2222-4222-8222-222222222222', at: '2026-01-01T10:00:00Z' };
+    const assertion: HistoryAssertion = { id: '33333333-3333-4333-8333-333333333333', startAt: night.endTime,
+      endAt: nap.startTime, status: 'complete', boundaries: [sleepBoundary(night), sleepBoundary(nap)] };
+    await first.run(() => first.storage.saveEvent(night)); await first.run(() => first.storage.saveEvent(nap));
+    await first.run(() => first.storage.saveConfirmedWake(wake)); await first.run(() => first.storage.saveHistoryAssertion(assertion));
+    await first.run(() => first.sync.synchronize());
+    const second = await device(); await second.run(() => second.sync.connect(settings)); await second.run(() => second.sync.synchronize());
+    expect(second.storage.confirmedWakes()).toEqual([wake]); expect(second.storage.historyAssertions()).toEqual([assertion]);
+    await second.run(() => second.storage.saveConfirmedWake({ ...wake, at: '2026-01-01T11:00:00Z' }));
+    await second.run(() => second.storage.saveHistoryAssertion({ ...assertion, status: 'incomplete' }));
+    await second.run(() => second.sync.synchronize()); await first.run(() => first.sync.synchronize());
+    expect(first.storage.confirmedWakes()).toEqual([{ ...wake, at: '2026-01-01T11:00:00Z' }]);
+    expect(first.storage.historyAssertions()[0].status).toBe('incomplete');
+    await first.run(() => first.storage.deleteConfirmedWake(wake.id)); await first.run(() => first.storage.deleteHistoryAssertion(assertion.id));
+    await first.run(() => first.sync.synchronize()); await second.run(() => second.sync.synchronize());
+    const restarted = await device(second.saved);
+    expect(restarted.storage.confirmedWakes()).toEqual([]); expect(restarted.storage.historyAssertions()).toEqual([]);
+    expect(restarted.storage.events()).toEqual(expect.arrayContaining([night, nap]));
+  });
+
+  it('transfers real preparation without sleep, links on the other parent and retains invalidation across restart', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime('2026-10-24T08:30:00Z');
+    const first = await device(); await first.run(() => first.sync.connect(settings));
+    await first.run(() => first.storage.saveProfile({ id: 'baby', name: 'Synthetic', birthDate: '2026-06-01', dueDate: '2026-06-01', gender: 'girl' }));
+    await first.run(() => first.storage.saveSleepRoutine({ version: 1, timeZone: 'UTC', nightStartFrom: '20:00', nightStartTo: '21:00',
+      daytimeNaps: 3, dayPreparationMinutes: 10, nightPreparationMinutes: 20, assistantEnabled: true }));
+    const wake = { id: '22222222-2222-4222-8222-222222222222', at: '2026-10-24T08:00:00.000Z' };
+    await first.run(() => first.storage.saveConfirmedWake(wake));
+    const plan = calculateSleepForecast({ profile: first.storage.profile(), events: [], activeTimers: first.storage.activeTimers(),
+      sleepRoutine: first.storage.sleepRoutine(), confirmedWakes: [wake], historyAssertions: [],
+      scope: yandexScope(familyId), importGeneration: 0, journal: first.storage.syncDocument() }, Date.now());
+    await first.run(() => first.storage.beginSleepPreparation(plan)); await first.run(() => first.storage.suppressSleepCycle(plan));
+    const prep = first.storage.sleepPreparations()[0];
+    await first.run(() => first.sync.synchronize());
+    const second = await device(); await second.run(() => second.sync.connect(settings)); await second.run(() => second.sync.synchronize());
+    expect(second.storage.sleepPreparations()).toEqual([prep]); expect(second.storage.activeTimers().sleepTimer).toBeNull();
+    expect(second.storage.sleepCycleSuppressions()[0].anchorId).toBe(plan.anchor!.id);
+    await second.run(() => second.storage.completeSleepPreparation(prep.id, prep.preparationId, false));
+    await second.run(() => second.sync.synchronize()); await first.run(() => first.sync.synchronize());
+    expect(first.storage.activeTimers().sleepTimer).toMatchObject({ id: prep.id });
+    expect(first.storage.sleepPreparations()[0]).toMatchObject({ state: 'completed', sleepEventId: prep.id });
+    await first.run(() => first.storage.deleteConfirmedWake(wake.id));
+    await first.run(() => first.sync.synchronize()); await second.run(() => second.sync.synchronize());
+    const restarted = await device(second.saved);
+    expect(restarted.storage.sleepPreparations()[0].state).toBe('cancelled');
+    expect(restarted.storage.confirmedWakes()).toEqual([]);
+  });
 
   it('передаёт офлайн-события, изменения, удаления и незавершённый сон без дублей после повторных обменов', async () => {
     const first = await device();

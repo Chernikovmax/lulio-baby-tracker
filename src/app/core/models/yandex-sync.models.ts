@@ -29,12 +29,12 @@ export function yandexScope(familyId: string): string { return `yandex-disk:${fa
 
 export interface YandexPacket {
   format: 'baby-tracker-sync';
-  version: 1;
+  version: 1 | 2 | 3 | 4;
   familyId: string;
   document: SyncDocument;
 }
 export function isYandexPacket(value: unknown, familyId: string): value is YandexPacket {
-  return isRecord(value) && value['format'] === 'baby-tracker-sync' && value['version'] === 1 &&
+  return isRecord(value) && value['format'] === 'baby-tracker-sync' && [1, 2, 3, 4].includes(value['version'] as number) &&
     value['familyId'] === familyId && isSyncDocument(value['document']) &&
     value['document'].scope === yandexScope(familyId);
 }

@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { disabled, form, FormField, required } from '@angular/forms/signals';
+import { disabled, form, FormField, max, min, required, validate } from '@angular/forms/signals';
 import { IonButton, IonContent, IonHeader, IonTitle, IonToolbar } from '@ionic/angular';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
@@ -14,6 +14,7 @@ import type { DiskItem } from '../../core/services/yandex-disk.client';
 import { TimerNotificationService } from '../../core/services/timer-notification.service';
 import { PwaService } from '../../core/services/pwa.service';
 import { ThemeService } from '../../core/services/theme.service';
+import { isSleepRoutine, type SleepRoutine } from '../../core/models/sleep-routine.models';
 
 const today = () => {
   const date = new Date();
@@ -33,6 +34,23 @@ export class SettingsPage {
   readonly timerNotifications = inject(TimerNotificationService);
   readonly pwa = inject(PwaService);
   readonly theme = inject(ThemeService);
+  readonly routineModel = signal({
+    timeZone: '', nightStartFrom: '20:00', nightStartTo: '21:00', daytimeNaps: 3,
+    dayPreparationMinutes: 10, nightPreparationMinutes: 20, assistantEnabled: false,
+  });
+  readonly routineForm = form(this.routineModel, path => {
+    disabled(path, () => this.routineSaving() || this.storage.isLoading() || !!this.storage.error());
+    required(path.timeZone);
+    min(path.daytimeNaps, 0); max(path.daytimeNaps, 12);
+    min(path.dayPreparationMinutes, 0); max(path.dayPreparationMinutes, 180);
+    min(path.nightPreparationMinutes, 0); max(path.nightPreparationMinutes, 180);
+    validate(path, ({ value }) => isSleepRoutine({ version: 1, ...value() }) ? null :
+      { kind: 'routine', message: 'Выберите часовой пояс IANA, разные границы ночи, целое число снов 0–12 и подготовку 0–180 минут.' });
+  });
+  readonly routineSaving = signal(false);
+  readonly routineMessage = signal('');
+  readonly routineError = signal('');
+  private routineSnapshot = '';
   readonly yandexModel = signal({ clientId: '', folderPath: '/Baby Tracker', familyId: '' });
   readonly yandexForm = form(this.yandexModel, path => {
     disabled(path, () => this.yandexBusy() || this.yandex.config().enabled);
@@ -97,9 +115,38 @@ export class SettingsPage {
       this.yandexModel.set({ clientId: config.clientId, folderPath: config.folderPath || '/Baby Tracker', familyId: config.familyId });
       this.yandexHydrated = true;
     });
+    effect(() => {
+      const routine = this.storage.sleepRoutine();
+      const snapshot = JSON.stringify(routine);
+      if (snapshot === this.routineSnapshot) return;
+      this.routineSnapshot = snapshot;
+      if (routine) {
+        const { version: _version, ...settings } = routine;
+        this.routineModel.set(settings);
+      } else {
+        this.routineModel.update(value => ({ ...value, timeZone: '', assistantEnabled: false }));
+      }
+    });
   }
 
   get maxDate(): string { return today(); }
+
+  async saveRoutine(): Promise<void> {
+    if (this.routineSaving() || this.storage.isLoading() || this.storage.error()) return;
+    this.routineMessage.set(''); this.routineError.set('');
+    const routine: SleepRoutine = { version: 1, ...this.routineModel() };
+    if (!isSleepRoutine(routine)) {
+      this.routineError.set('Проверьте часовой пояс IANA (например Europe/Moscow), разные границы ночи, число снов 0–12 и подготовку 0–180 целых минут.');
+      return;
+    }
+    this.routineSaving.set(true);
+    try {
+      await this.storage.saveSleepRoutine(routine);
+      this.routineMessage.set('Режим сохранён. Уведомления не включены.');
+    } catch {
+      this.routineError.set('Не удалось сохранить режим. Изменения остались в форме — попробуйте ещё раз.');
+    } finally { this.routineSaving.set(false); }
+  }
 
 
   async saveProfile(): Promise<void> {
@@ -175,6 +222,14 @@ export class SettingsPage {
       await this.storage.importBackup(json);
       const profile = this.storage.profile();
       this.model.set(profile ? { name: profile.name, birthDate: profile.birthDate, dueDate: profile.dueDate, gender: profile.gender } : { name: '', birthDate: '', dueDate: '', gender: 'boy' });
+      const routine = this.storage.sleepRoutine();
+      if (routine) {
+        const { version: _version, ...settings } = routine;
+        this.routineModel.set(settings);
+      } else {
+        this.routineModel.update(value => ({ ...value, timeZone: '', assistantEnabled: false }));
+      }
+      this.routineError.set(''); this.routineMessage.set('');
       this.backupMessage.set('Резервная копия восстановлена.');
       this.cancelImport();
     } catch {

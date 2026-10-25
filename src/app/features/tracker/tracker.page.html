@@ -78,6 +78,7 @@
           </ion-list>
         }
       </section>
+      <app-sleep-history-editor #historyEditor></app-sleep-history-editor>
     }
     <div class="bottom-space"></div>
   </main>
@@ -89,5 +90,6 @@
   <ion-alert [isOpen]="deleting !== null" header="Удалить запись?" [message]="deleting ? eventTitle(deleting.event) : ''" [buttons]="deleteButtons" (didDismiss)="onDeleteDismiss($event.detail.role)"></ion-alert>
 </ion-content>
 <ion-footer>
+  @if (!isLoading() && !storageError()) { <app-sleep-assistant-card (clarify)="openWake()"></app-sleep-assistant-card> }
   <app-quick-action-dock (action)="onDockAction($event)"></app-quick-action-dock>
 </ion-footer>

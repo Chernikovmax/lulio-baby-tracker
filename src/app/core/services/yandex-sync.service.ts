@@ -121,7 +121,7 @@ export class YandexSyncService {
       if (signature !== published) {
         this.status.set('Отправляем изменения на Яндекс Диск…');
         const name = `baby-tracker-${config.familyId}-${crypto.randomUUID()}.json`;
-        const packet: YandexPacket = { format: 'baby-tracker-sync', version: 1, familyId: config.familyId, document };
+        const packet: YandexPacket = { format: 'baby-tracker-sync', version: 4, familyId: config.familyId, document };
         await client.upload(childPath(config.folderPath, name), packet);
         processed.add(name);
         published = signature;

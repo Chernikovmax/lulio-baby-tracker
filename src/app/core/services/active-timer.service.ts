@@ -2,6 +2,7 @@ import { Service, computed, inject } from '@angular/core';
 import { ActiveBreastTimer, BreastSide, BreastfeedingEvent, SleepEvent, isBreastSide } from '../models/tracker.models';
 import { ClockService } from './clock.service';
 import { StorageService } from './storage.service';
+import { sleepCycleId } from '../models/sleep-assistant.models';
 
 @Service()
 export class ActiveTimerService {
@@ -22,7 +23,7 @@ export class ActiveTimerService {
   async startSleep(isNightSleep = false, minutesAgo = 0): Promise<void> {
     await this.storage.update(data => {
       if (data.activeTimers.sleepTimer) throw new Error('Таймер сна уже запущен.');
-      return { ...data, activeTimers: { ...data.activeTimers, sleepTimer: { startedAt: this.startedAt(minutesAgo), isNightSleep } } };
+      return { ...data, activeTimers: { ...data.activeTimers, sleepTimer: { id: crypto.randomUUID(), startedAt: this.startedAt(minutesAgo), isNightSleep } } };
     });
     this.clock.refresh();
   }
@@ -51,14 +52,19 @@ export class ActiveTimerService {
   }
 
   async stopSleep(): Promise<SleepEvent | null> {
+    const startingTimer = this.sleepTimer();
+    if (!startingTimer) return null;
+    const legacyId = !startingTimer.id ? await sleepCycleId('legacy-sleep-timer', startingTimer.startedAt) : null;
     let event: SleepEvent | null = null;
     await this.storage.update(data => {
       const timer = data.activeTimers.sleepTimer;
       if (!timer) return data;
+      if (timer.id !== startingTimer.id || timer.startedAt !== startingTimer.startedAt) throw new Error('Таймер изменился. Проверьте текущий сон.');
       const endTime = timer.pausedAt ?? new Date(Math.max(Date.now(), Date.parse(timer.pauses?.at(-1)?.endTime ?? timer.startedAt))).toISOString();
-      event = { id: crypto.randomUUID(), type: 'sleep', startTime: timer.startedAt, endTime, updatedAt: new Date().toISOString(), isNightSleep: timer.isNightSleep, ...(timer.pauses?.length ? { pauses: timer.pauses } : {}) };
-      return { ...data, events: [...data.events, event], activeTimers: { ...data.activeTimers, sleepTimer: null } };
+      event = { id: timer.id ?? legacyId!, type: 'sleep', startTime: timer.startedAt, endTime, updatedAt: new Date().toISOString(), isNightSleep: timer.isNightSleep, ...(timer.pauses?.length ? { pauses: timer.pauses } : {}) };
+      return { ...data, events: [...data.events.filter(item => item.id !== event!.id), event], activeTimers: { ...data.activeTimers, sleepTimer: null } };
     });
+    this.clock.refresh();
     return event;
   }
 

@@ -8,7 +8,9 @@ export interface WakeNorm {
   readonly maxDailySleepHours: number;
 }
 
-// Ориентиры, а не медицинское назначение: учитывайте индивидуальные признаки усталости.
+// Non-clinical engineering wake priors only; consumer selects calendar-month bands and stops at 18 months.
+// Legacy daily totals/day labels are retained data, not forecast validation or calendar guideline boundaries.
+// AASM/WHO daily-duration evidence is separate; see RESEARCHES.md §0.1. No feeding restriction is implied.
 export const WAKE_NORMS: readonly WakeNorm[] = [
   { minAgeDays: 0, maxAgeDays: 30, label: '0–1 месяц', minWakeMinutes: 40, maxWakeMinutes: 60, minDailySleepHours: 14, maxDailySleepHours: 17 },
   { minAgeDays: 31, maxAgeDays: 60, label: '1–2 месяца', minWakeMinutes: 50, maxWakeMinutes: 75, minDailySleepHours: 14, maxDailySleepHours: 17 },

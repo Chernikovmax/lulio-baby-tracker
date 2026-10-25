@@ -55,6 +55,38 @@
       </form>
     </section>
 
+    <section aria-labelledby="routine-title">
+      <h2 id="routine-title">Индивидуальный режим сна</h2>
+      <p class="hint">Общий режим семьи, не медицинское расписание. Количество снов — ориентир, дополнительный сон не запрещён. Подготовка — выбор родителя, а не назначение.</p>
+      <p id="routine-zone-hint" class="hint">Выберите часовой пояс явно, например Europe/Moscow, Asia/Yekaterinburg или UTC. При поездке он не меняется автоматически. Смена пояса не изменяет даты записей и таймеры.</p>
+      @if (storage.sleepRoutine(); as routine) {
+        <p role="status">Сохранено: {{ routine.nightStartFrom }}–{{ routine.nightStartTo }} · {{ routine.timeZone }} · дневных снов: {{ routine.daytimeNaps }}.</p>
+      } @else {
+        <p role="status">Режим ещё не задан. Часовой пояс не выбран, помощник выключен.</p>
+      }
+      <form (submit)="$event.preventDefault(); saveRoutine()" novalidate>
+        <label for="routine-zone">Часовой пояс IANA</label>
+        <input id="routine-zone" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="routine-zone-hint" placeholder="Europe/Moscow" [formField]="routineForm.timeZone">
+        <label for="routine-night-from">Желаемое начало ночного сна · от</label>
+        <input id="routine-night-from" type="time" [formField]="routineForm.nightStartFrom" aria-describedby="routine-night-hint">
+        <label for="routine-night-to">Желаемое начало ночного сна · до</label>
+        <input id="routine-night-to" type="time" [formField]="routineForm.nightStartTo" aria-describedby="routine-night-hint">
+        <p id="routine-night-hint" class="hint">Диапазон начала сна, не длительность ночи. Может переходить через полночь: 23:00–01:00. Границы должны различаться.</p>
+        <label for="routine-naps">Количество дневных снов · 0–12</label>
+        <input id="routine-naps" type="number" step="1" [formField]="routineForm.daytimeNaps">
+        <label for="routine-day-preparation">Подготовка днём · минут, 0–180</label>
+        <input id="routine-day-preparation" type="number" step="1" [formField]="routineForm.dayPreparationMinutes">
+        <label for="routine-night-preparation">Подготовка к ночи · минут, 0–180</label>
+        <input id="routine-night-preparation" type="number" step="1" [formField]="routineForm.nightPreparationMinutes">
+        <label class="checkbox-row"><input id="routine-assistant" type="checkbox" [formField]="routineForm.assistantEnabled">Включить помощника сна для семьи</label>
+        <p class="hint">Сейчас сохраняются только настройки: персональный прогноз и отдельная подготовка появятся на следующих этапах. Этот флажок не запрашивает разрешений и не включает уведомления. Настройки доставки каждого телефона остаются отдельными.</p>
+        @if (routineError()) { <p class="error" role="alert">{{ routineError() }}</p> }
+        @if (routineMessage()) { <p class="success" role="status">{{ routineMessage() }}</p> }
+        <ion-button type="submit" expand="block" [disabled]="routineSaving() || storage.isLoading() || !!storage.error()">{{ routineSaving() ? 'Сохраняем…' : 'Сохранить режим' }}</ion-button>
+      </form>
+      <p class="hint">Полученные семейные изменения и импорт обновляют форму. Несохранённые правки не передаются. Перед ручным обменом через Яндекс Диск сохраните режим и синхронизируйте оба телефона.</p>
+    </section>
+
     @if (timerNotifications.supported) {
       <section aria-labelledby="timer-notifications-title">
         <h2 id="timer-notifications-title">Таймеры в шторке Android</h2>
@@ -76,7 +108,7 @@
       @if (confirmImport()) {
         <div class="confirmation" role="region" aria-labelledby="confirm-title" aria-describedby="confirm-description">
           <h3 id="confirm-title">Заменить все данные?</h3>
-          <p id="confirm-description">Профиль, события и активные таймеры будут заменены содержимым резервной копии. При включённой синхронизации замена затронет и семью. Это действие нельзя отменить.</p>
+          <p id="confirm-description">Профиль, события, активные таймеры, режим, подтверждения пробуждений и полноты истории будут заменены содержимым резервной копии; помощник после импорта выключен. При включённой синхронизации замена затронет и семью. Это действие нельзя отменить.</p>
           <ion-button expand="block" color="danger" [disabled]="importing()" (click)="replaceFromBackup()">{{ importing() ? 'Восстанавливаем…' : 'Подтвердить замену' }}</ion-button>
           <ion-button expand="block" fill="outline" [disabled]="importing()" (click)="cancelImport()">Отмена</ion-button>
         </div>
@@ -85,7 +117,7 @@
 
     <section aria-labelledby="yandex-title" [attr.aria-busy]="yandexBusy()">
       <h2 id="yandex-title">Яндекс Диск · ручной обмен</h2>
-      <p class="hint">Общая закрытая папка с правом «Редактирование» для обоих родителей. Каждый входит в свой Яндекс ID. Передающий родитель синхронизирует первым, принимающий — после него. Отправляются события, удаления и активные таймеры, но не профиль малыша.</p>
+      <p class="hint">Общая закрытая папка с правом «Редактирование» для обоих родителей. Каждый входит в свой Яндекс ID. Передающий родитель синхронизирует первым, принимающий — после него. Отправляются события, удаления, активные таймеры и режим сна, но не профиль малыша, разрешения или настройки доставки устройства. Оба клиента должны поддерживать режим сна.</p>
       <p class="hint">Разрешения Яндекса дают приложению чтение и запись всего Диска; приложение обращается только к выбранной папке. Пароль и Client Secret не нужны.</p>
       @if (!yandex.auth.native) {
         <p class="hint">В браузере сессия хранится только в памяти вкладки: после перезагрузки войдите снова. Для постоянного защищённого входа используйте приложение Android/iOS. Браузерные запросы также зависят от CORS Яндекса.</p>

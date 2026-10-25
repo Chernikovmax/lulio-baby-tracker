@@ -1,3 +1,7 @@
+import { isSleepRoutine, type SleepRoutine } from './sleep-routine.models';
+import { isConfirmedWake, isHistoryAssertion, type ConfirmedWake, type HistoryAssertion } from './sleep-history.models';
+import { isSleepPreparation, isSleepCycleSuppression, ASSISTANT_UUID, type SleepPreparation, type SleepCycleSuppression } from './sleep-assistant.models';
+
 export type EventType = 'sleep' | 'breastfeeding' | 'bottle' | 'solids' | 'pumping' | 'diaper' | 'growth';
 export type BreastSide = 'left' | 'right';
 export type DiaperState = 'wet' | 'dirty' | 'mixed';
@@ -65,6 +69,8 @@ export interface GrowthEvent extends BaseEvent {
 }
 export type AnyTrackerEvent = SleepEvent | BreastfeedingEvent | BottleEvent | SolidsEvent | PumpingEvent | DiaperEvent | GrowthEvent;
 export interface ActiveSleepTimer {
+  /** Allocated once at start; legacy snapshots receive an ID during storage migration. */
+  id?: string;
   startedAt: string;
   isNightSleep: boolean;
   pausedAt?: string;
@@ -86,9 +92,15 @@ export interface TrackerData {
   profile: BabyProfile | null;
   events: AnyTrackerEvent[];
   activeTimers: ActiveTimerState;
+  /** Absent only in legacy snapshots; persisted as null until a parent explicitly saves a routine. */
+  sleepRoutine?: SleepRoutine | null;
+  confirmedWakes?: ConfirmedWake[];
+  historyAssertions?: HistoryAssertion[];
+  sleepPreparations?: SleepPreparation[];
+  sleepCycleSuppressions?: SleepCycleSuppression[];
 }
 export interface TrackerBackup extends TrackerData {
-  version: 1;
+  version: 1 | 2 | 3 | 4;
   exportedAt: string;
 }
 
@@ -173,6 +185,7 @@ export function isAnyTrackerEvent(value: unknown): value is AnyTrackerEvent {
 }
 export function isActiveSleepTimer(value: unknown): value is ActiveSleepTimer {
   return isRecord(value) && isIsoTimestamp(value['startedAt']) && typeof value['isNightSleep'] === 'boolean' &&
+    (value['id'] === undefined || (typeof value['id'] === 'string' && ASSISTANT_UUID.test(value['id']))) &&
     (value['pausedAt'] === undefined || (isIsoTimestamp(value['pausedAt']) && Date.parse(value['pausedAt']) >= Date.parse(value['startedAt']))) &&
     validSleepPauses(value['pauses'], value['startedAt'], value['pausedAt']);
 }
@@ -186,6 +199,27 @@ export function isActiveBreastTimer(value: unknown): value is ActiveBreastTimer 
 export function isActiveTimerState(value: unknown): value is ActiveTimerState {
   return isRecord(value) && (value['sleepTimer'] === null || isActiveSleepTimer(value['sleepTimer'])) &&
     (value['breastTimer'] === null || isActiveBreastTimer(value['breastTimer']));
+}
+export function isTrackerData(value: unknown): value is TrackerData {
+  return isRecord(value) && (value['profile'] === null || isBabyProfile(value['profile'])) &&
+    Array.isArray(value['events']) && value['events'].every(isAnyTrackerEvent) &&
+    new Set(value['events'].map(event => event.id)).size === value['events'].length && isActiveTimerState(value['activeTimers']) &&
+    (value['sleepRoutine'] === undefined || value['sleepRoutine'] === null || isSleepRoutine(value['sleepRoutine'])) &&
+    (value['confirmedWakes'] === undefined || (Array.isArray(value['confirmedWakes']) && value['confirmedWakes'].every(isConfirmedWake) &&
+      new Set(value['confirmedWakes'].map(item => item.id)).size === value['confirmedWakes'].length)) &&
+    (value['historyAssertions'] === undefined || (Array.isArray(value['historyAssertions']) && value['historyAssertions'].every(isHistoryAssertion) &&
+      new Set(value['historyAssertions'].map(item => item.id)).size === value['historyAssertions'].length)) &&
+    (value['sleepPreparations'] === undefined || (Array.isArray(value['sleepPreparations']) && value['sleepPreparations'].every(isSleepPreparation) &&
+      new Set(value['sleepPreparations'].map(item => item.id)).size === value['sleepPreparations'].length)) &&
+    (value['sleepCycleSuppressions'] === undefined || (Array.isArray(value['sleepCycleSuppressions']) && value['sleepCycleSuppressions'].every(isSleepCycleSuppression) &&
+      new Set(value['sleepCycleSuppressions'].map(item => item.id)).size === value['sleepCycleSuppressions'].length));
+}
+export function isTrackerBackup(value: unknown): value is TrackerBackup {
+  return isTrackerData(value) && isRecord(value) && isIsoTimestamp(value['exportedAt']) &&
+    (value['version'] === 1 || (value['version'] === 2 && value['sleepRoutine'] !== undefined) ||
+      (value['version'] === 3 && value['sleepRoutine'] !== undefined && value['confirmedWakes'] !== undefined && value['historyAssertions'] !== undefined) ||
+      (value['version'] === 4 && value['sleepRoutine'] !== undefined && value['confirmedWakes'] !== undefined && value['historyAssertions'] !== undefined &&
+        value['sleepPreparations'] !== undefined && value['sleepCycleSuppressions'] !== undefined));
 }
 
 function validSleepPauses(value: unknown, start: string, end?: string): boolean {
@@ -214,11 +248,4 @@ export function sleepIntervals(startTime: string, endTime: string, pauses: reado
   if (cursor < end) intervals.push({ start: cursor, end });
   return intervals;
 }
-export function isTrackerData(value: unknown): value is TrackerData {
-  return isRecord(value) && (value['profile'] === null || isBabyProfile(value['profile'])) &&
-    Array.isArray(value['events']) && value['events'].every(isAnyTrackerEvent) &&
-    new Set(value['events'].map(event => event.id)).size === value['events'].length && isActiveTimerState(value['activeTimers']);
-}
-export function isTrackerBackup(value: unknown): value is TrackerBackup {
-  return isTrackerData(value) && isRecord(value) && value['version'] === 1 && isIsoTimestamp(value['exportedAt']);
-}
+

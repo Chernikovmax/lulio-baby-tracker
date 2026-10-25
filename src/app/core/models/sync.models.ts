@@ -1,4 +1,7 @@
 import { isActiveBreastTimer, isActiveSleepTimer, isAnyTrackerEvent, isRecord } from './tracker.models';
+import { isSleepRoutine } from './sleep-routine.models';
+import { isConfirmedWake, isHistoryAssertion, SLEEP_FACT_UUID } from './sleep-history.models';
+import { ASSISTANT_UUID, isSleepPreparation, isSleepCycleSuppression } from './sleep-assistant.models';
 
 export interface SyncConfig {
   enabled: boolean;
@@ -40,6 +43,11 @@ export function isSyncEntries(value: unknown): value is Record<string, SyncEntry
     const item = entry['value'];
     if (key === 'sleepTimer') return item === null || isActiveSleepTimer(item);
     if (key === 'breastTimer') return item === null || isActiveBreastTimer(item);
+    if (key === 'sleepRoutine') return item === null || isSleepRoutine(item);
+    if (key.startsWith('wake:')) return SLEEP_FACT_UUID.test(key.slice(5)) && (item === null || (isConfirmedWake(item) && key === `wake:${item.id}`));
+    if (key.startsWith('assertion:')) return SLEEP_FACT_UUID.test(key.slice(10)) && (item === null || (isHistoryAssertion(item) && key === `assertion:${item.id}`));
+    if (key.startsWith('preparation:')) return ASSISTANT_UUID.test(key.slice(12)) && (item === null || (isSleepPreparation(item) && key === `preparation:${item.id}`));
+    if (key.startsWith('suppression:')) return ASSISTANT_UUID.test(key.slice(12)) && (item === null || (isSleepCycleSuppression(item) && key === `suppression:${item.id}`));
     return key.startsWith('event:') && key.length > 6 &&
       (item === null || (isAnyTrackerEvent(item) && key === `event:${item.id}`));
   });
