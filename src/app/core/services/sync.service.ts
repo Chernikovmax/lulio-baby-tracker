@@ -128,7 +128,7 @@ export class SyncService {
     if (!connection) return;
     connection.connected = false;
     if (connection.channel) void connection.client.removeChannel(connection.channel);
-    connection.client.auth.stopAutoRefresh();
+    connection.client.auth.dispose();
   }
 
   private async connect(config: SyncConfig): Promise<void> {
@@ -158,10 +158,10 @@ export class SyncService {
         const { error } = await client.auth.signInAnonymously();
         if (error) throw error;
       }
-      if (generation !== this.generation) { client.auth.stopAutoRefresh(); return; }
+      if (generation !== this.generation) { client.auth.dispose(); return; }
       const { error: joinError } = await client.rpc('join_tracker_family', { target_family: resolved.familyId });
       if (joinError) throw joinError;
-      if (generation !== this.generation) { client.auth.stopAutoRefresh(); return; }
+      if (generation !== this.generation) { client.auth.dispose(); return; }
       const connection: Connection = { client, scope, familyId: resolved.familyId, connected: true, running: false, requested: false };
       this.connection = connection;
       connection.channel = client.channel(`family:${resolved.familyId}`, {
@@ -184,7 +184,7 @@ export class SyncService {
       });
       this.requestSync();
     } catch {
-      client?.auth.stopAutoRefresh();
+      client?.auth.dispose();
       if (generation !== this.generation) return;
       this.connection = null;
       this.error.set('Не удалось подключиться. Проверьте настройки, схему базы и анонимный вход Supabase.');
