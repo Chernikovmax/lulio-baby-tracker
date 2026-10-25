@@ -13,6 +13,7 @@ import { isConfirmedWake, isHistoryAssertion, assertionMatches, type ConfirmedWa
 import { sleepCycleId, type SleepPreparation, type SleepCycleSuppression } from '../models/sleep-assistant.models';
 import { calculateSleepForecast, type SleepForecast } from './sleep-forecast';
 import { cycleAnchorRevision, reconcileSleepPreparations } from './sleep-preparation';
+import { androidPreparationSupported, preparationNative } from './preparation-reminder.native';
 
 interface StoredData extends TrackerData {
   sync?: SyncDocument;
@@ -73,6 +74,8 @@ export class StorageService {
   readonly sleepCycleSuppressions = computed(() => this.dataResource.hasValue() ? this.dataResource.value().sleepCycleSuppressions ?? [] : []);
   /** Import invalidation is independent of repeated event IDs and timestamps. */
   readonly importGeneration = signal(0);
+  /** Native fence changes also reconcile after failed diary persistence. */
+  readonly reminderGeneration = signal(0);
   readonly syncDocument = computed(() => this.dataResource.hasValue() ? this.dataResource.value().sync ?? null : null);
   readonly supabaseCheckpoint = computed(() => this.dataResource.hasValue() ? this.dataResource.value().supabase ?? null : null);
 
@@ -85,6 +88,13 @@ export class StorageService {
   async whenIdle(): Promise<void> {
     await this.writes;
     await this.ready();
+  }
+
+  /** Serialize native publication rights with diary writes across the two durable stores. */
+  withCommittedSnapshot(read: () => Promise<void>): Promise<void> {
+    const operation = this.writes.then(async () => { await this.ready(); await read(); });
+    this.writes = operation.catch(() => undefined);
+    return operation;
   }
 
   /** Последовательная read–modify–write транзакция; при ошибке записи состояние не меняется. */
@@ -139,6 +149,12 @@ export class StorageService {
       if (!isTrackerData(next)) throw new Error('Невозможно сохранить некорректные данные.');
       const snapshot = JSON.stringify(next);
       if (snapshot === JSON.stringify(this.dataResource.value())) return;
+      if (androidPreparationSupported()) {
+        // Cancel and durably fence before the diary commit. A crash between stores misses
+        // a reminder rather than publishing a superseded plan while JavaScript is closed.
+        await preparationNative.preparationInvalidate();
+        this.reminderGeneration.update(value => value + 1);
+      }
       await Preferences.set({ key: STORAGE_KEY, value: snapshot });
       this.dataResource.value.set(JSON.parse(snapshot) as StoredData);
     });

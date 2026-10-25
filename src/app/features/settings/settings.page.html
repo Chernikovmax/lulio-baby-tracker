@@ -79,12 +79,25 @@
         <label for="routine-night-preparation">Подготовка к ночи · минут, 0–180</label>
         <input id="routine-night-preparation" type="number" step="1" [formField]="routineForm.nightPreparationMinutes">
         <label class="checkbox-row"><input id="routine-assistant" type="checkbox" [formField]="routineForm.assistantEnabled">Включить помощника сна для семьи</label>
-        <p class="hint">Сейчас сохраняются только настройки: персональный прогноз и отдельная подготовка появятся на следующих этапах. Этот флажок не запрашивает разрешений и не включает уведомления. Настройки доставки каждого телефона остаются отдельными.</p>
+        <p class="hint">Помощник рассчитывает ориентир и позволяет отдельно отметить подготовку. Этот семейный флажок не запрашивает разрешений и не включает уведомления. Настройки доставки каждого телефона остаются отдельными.</p>
         @if (routineError()) { <p class="error" role="alert">{{ routineError() }}</p> }
         @if (routineMessage()) { <p class="success" role="status">{{ routineMessage() }}</p> }
         <ion-button type="submit" expand="block" [disabled]="routineSaving() || storage.isLoading() || !!storage.error()">{{ routineSaving() ? 'Сохраняем…' : 'Сохранить режим' }}</ion-button>
       </form>
       <p class="hint">Полученные семейные изменения и импорт обновляют форму. Несохранённые правки не передаются. Перед ручным обменом через Яндекс Диск сохраните режим и синхронизируйте оба телефона.</p>
+    </section>
+
+    <section aria-labelledby="preparation-reminders-title">
+      <h2 id="preparation-reminders-title">Напоминание о подготовке ко сну</h2>
+      <p class="hint">Одно напоминание на цикл на этом устройстве. Без имени ребёнка; нажатие открывает актуальную карточку без запуска сна. Выбор этого телефона не передаётся семье и не включается из резервной копии.</p>
+      <p role="status">{{ preparationReminders.description() }}</p>
+      @if (preparationReminders.supported) {
+        <ion-button expand="block" [disabled]="preparationReminders.busy()" (click)="preparationReminders.setEnabled(!preparationReminders.status()?.enabled)">{{ preparationReminders.status()?.enabled ? 'Выключить на этом Android' : 'Включить на этом Android' }}</ion-button>
+        <ion-button expand="block" fill="outline" [disabled]="preparationReminders.busy()" (click)="preparationReminders.settings(false)">Разрешение и канал подготовки</ion-button>
+        <p class="hint">Доступ к точным сигналам: {{ preparationReminders.status()?.exact ? 'разрешён' : 'нет' }}. Без него ОС может задержать сигнал вплоть до часа и дольше при энергосбережении; после срока актуальности он не показывается.</p>
+        <ion-button expand="block" fill="outline" [disabled]="preparationReminders.busy()" (click)="preparationReminders.settings(true)">Настроить точные сигналы</ion-button>
+        <p class="hint">Нет гарантии доставки при выключенном телефоне, запрете уведомлений, «Не беспокоить», принудительной остановке или закрытом Private Space. После возврата восстанавливаются только будущие актуальные сигналы, не пропущенные.</p>
+      }
     </section>
 
     @if (timerNotifications.supported) {

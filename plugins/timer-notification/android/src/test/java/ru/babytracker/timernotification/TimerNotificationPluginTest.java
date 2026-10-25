@@ -146,6 +146,32 @@ public class TimerNotificationPluginTest {
         assertEquals(activity.getPackageName(), settings.getStringExtra(android.provider.Settings.EXTRA_APP_PACKAGE));
     }
 
+    @Test
+    public void preparationConsentAndSettingsAreSeparateFromQuietPausedTimers() throws Exception {
+        update(timer("Сон · пауза", null, 125), null);
+        Call initial = new Call(new JSObject());
+        plugin.preparationStatus(initial);
+        assertFalse(initial.result.getBoolean("enabled"));
+        JSObject enable = new JSObject(); enable.put("enabled", true);
+        Call consent = new Call(enable);
+        plugin.preparationConsent(consent);
+        assertTrue(consent.result.getBoolean("enabled"));
+        assertEquals("00:02:05", onlyNotification().extras.getString(Notification.EXTRA_TEXT));
+        assertNull(manager.getNotificationChannel(onlyNotification().getChannelId()).getSound());
+        JSObject exact = new JSObject(); exact.put("exact", true);
+        plugin.preparationSettings(new Call(exact));
+        assertEquals(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+            shadowOf(activity).getNextStartedActivity().getAction());
+        shadowOf(manager).setNotificationsEnabled(false);
+        plugin.preparationSettings(new Call(new JSObject()));
+        assertEquals(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS,
+            shadowOf(activity).getNextStartedActivity().getAction());
+        JSObject disable = new JSObject(); disable.put("enabled", false);
+        Call off = new Call(disable); plugin.preparationConsent(off);
+        assertFalse(off.result.getBoolean("enabled"));
+        assertEquals("Сон · пауза", onlyNotification().extras.getString(Notification.EXTRA_TITLE));
+    }
+
     private JSObject timer(String title, Long startedAt, long elapsedSeconds) {
         JSObject result = new JSObject();
         result.put("title", title);

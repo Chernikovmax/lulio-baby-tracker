@@ -13,7 +13,7 @@ vi.mock('@aparajita/capacitor-secure-storage', () => ({
 vi.mock('@capacitor/browser', () => ({ Browser: { open: async () => undefined } }));
 vi.mock('@capacitor/core', () => ({
   CapacitorHttp: { request: async () => ({ status: 500, data: null, headers: {}, url: '' }) },
-  Capacitor: { isNativePlatform: () => false },
+  Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' },
   registerPlugin: () => ({}),
 }));
 

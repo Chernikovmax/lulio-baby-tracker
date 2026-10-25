@@ -932,6 +932,112 @@ Only the coordinator may accept stage 3 and launch the next distinct session. St
 
 **Приёмка:** на физическом Android проверены закрытое приложение, офлайн, перезагрузка, энергосбережение, отказ в разрешении, перенос и отмена. Повтор запроса и перезапуск не создают повторный сигнал одного цикла. Существующие уведомления таймеров работают.
 
+#### Stage 4 local implementation and blocked physical acceptance — 25 October 2026
+
+**Outcome: reachable Android implementation and local verification finished; full stage 4 is NOT accepted.** Stages 0–3 remain accepted. This resumed worker adopted interrupted stage-4 native files after the coordinator confirmed the earlier editor was exited, paused for the parent's accepted-stages baseline commit/push, then integrated the path below. No prior native verification was assumed. No stage 5, server, resource, signing, release, deployment or Git mutation was performed by this worker.
+
+##### 4.1. Delivered path and ownership
+
+- Settings has a separate explicit **«Включить на этом Android»** gesture for device consent/Android notification request, plus channel and exact-access settings. Family assistant opt-in and quiet live-timer permissions do not enroll preparation reminders. Denied/channel-blocked, disabled, expired/consumed, exact and explicitly approximate states are distinguished; inexact scheduling is not promised to be useful or delivered before its short expiry. Web/iPhone PWA explicitly reports delivery not connected.
+- `PreparationReminderService` consumes the existing `SleepForecastService` result, not a second calculator. It starts from `AppComponent`, reconciles persisted inputs, preparation/suppression, startup/resume and permissions, and handles notification navigation to current `/tabs/tracker` without diary actions. Pending content carries opaque SHA-256 input revision, stable `[scope, anchor, installation device]` entitlement, due and `min(due+10min, predicted sleep, applicability deadline)` expiry; raw profile/history is not copied into native intent.
+- `StorageService` fences native generation/intent before each changed diary commit, including scope/replication/import/lifecycle paths. Failure to persist cancellation prevents the diary mutation. Reconciliation holds `withCommittedSnapshot()` on the same write queue through native status/capture/scheduling, so a new native generation cannot arm an old in-flight diary snapshot. Across the two stores, a crash can miss a reminder, not leave an old armed plan; this is conservative fencing, not a claimed distributed atomic transaction.
+- The owned Android `PreparationReminder` ledger uses AtomicFile in `noBackupFilesDir`, a random installation ID, consent, generation, current unique alarm token and terminal cycle/device keys. The receiver re-reads and validates latest token/revision, scope/cycle/device/generation, permission/channel, cancellation, terminal state and expiry under one process lock immediately before committing consumption and publishing. Consumption is durable before `notify`: crash between authorization and publication can miss, never retry, that entitlement. Sent/expired/suppressed keys survive revision changes, disable/re-enable and process reconstruction.
+- Boot/time/timezone/package/exact-access broadcasts restore only current future work; even an overdue alarm still within TTL is consumed rather than shifted after boot. Delayed stale/expired/already-sent alarms cannot publish. The stock Local Notifications overdue-reboot path is not used. The first-party channel/tag/ID 4101 is distinct from quiet timer channel and IDs 1/2. Exact access uses user-controlled SCHEDULE_EXACT_ALARM, otherwise status and scheduling are explicitly inexact; no DND/Doze/force-stop/Private Space bypass.
+
+| Area | Exact files in this stage, including adopted interrupted work |
+| --- | --- |
+| Native scheduler/receiver/permissions | `plugins/timer-notification/android/src/main/java/ru/babytracker/timernotification/PreparationReminder.java`, `PreparationReminderReceiver.java`, `TimerNotificationPlugin.java`; `plugins/timer-notification/android/src/main/AndroidManifest.xml` |
+| Public package contract and single binding | `plugins/timer-notification/index.d.ts`; `src/app/core/services/preparation-reminder.native.ts` (obsolete interrupted API/hash removed, existing TimerNotification registration reused) |
+| Device orchestration/write fencing | `src/app/core/services/preparation-reminder.service.ts`, `storage.service.ts`; `src/app/app.component.ts` |
+| Actual UI | `src/app/features/settings/settings.page.ts`, `settings.page.html`; `src/app/shared/components/sleep-assistant-card.component.ts` |
+| Behavioral regressions | `plugins/timer-notification/android/src/test/java/ru/babytracker/timernotification/PreparationReminderTest.java`, `TimerNotificationPluginTest.java`; `src/app/core/services/preparation-reminder.spec.ts`; existing `yandex-sync.spec.ts`, `yandex-auth.spec.ts` receive the now-used platform method in their package mocks |
+| Contracts, instructions and receipt | `README.md`, `SPEC.md` §6.16, this record |
+
+No dependency version, SQL schema, environment/credential file or generated `android/` source was manually changed. A temporary newly created hyphenated binding file was removed after discovering/reusing the interrupted dotted `.native.ts` module; no duplicate registration or obsolete implementation remains.
+
+##### 4.2. Observed verification and corrected failures
+
+Final integration gates ran **sequentially after final production edits**:
+
+| Check | Observed result |
+| --- | --- |
+| `npx tsc --noEmit` | Exit 0; no diagnostics |
+| Angular MCP `app:build:production`, configured `npm run build` target | Success **12:43:21 UTC**, output `www`; initial **1.13 MB / 252.25 kB estimated transfer**, Tracker lazy **86.53 kB / 19.25 kB**, Settings **46.10 kB / 11.26 kB** |
+| Angular MCP `app:test` with `watch:false`, configured `npx ng test --watch=false` target | Success **12:43:26 UTC**, **25 files / 156 tests passed** |
+| Existing warning | Temporal `jsbi` CommonJS optimization warning remains visible, not suppressed |
+| Owned native compile and executable Android-service smoke | Cached Gradle 8.14.3/AGP 8.13, Homebrew JDK21, installed SDK36/build-tools35, isolated plugin + actual Capacitor Android project harness, **20 tests passed** on Robolectric **API32 and API36**, including **12 new reminder cases** and **8 timer/plugin cases**; final native run exit 0 |
+
+Native invocation used `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`, `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`, the repository `android/gradlew --offline -Pandroid.useAndroidX=true -p /tmp/lulio-stage4-native.StMKHj :baby-tracker-timer-notification:testDebugUnitTest`. The temporary settings included only the **actual** `node_modules/@capacitor/android/capacitor` and owned plugin projects; buildscript used existing AGP/variables/repositories. This is plugin compilation and Android-service simulation, **not a full APK compile, emulator or physical OS**.
+
+The native smoke constructs actual Android AlarmManager PendingIntents/AtomicFile ledger and dispatches explicit broadcasts through the **manifest-declared receiver** and main looper, observing NotificationManager and actual notification click Intent. It proves: pending revision replacement rejects stale token; a current delayed alarm within TTL posts once; sent cycle cannot rearm after reconstruction/new revision; future boot restoration and overdue time-change rejection even within TTL; delayed expired and initially past submissions cannot catch up; cancelled generation, suppression and disabled consent defeat queued receivers; exact revoke/grant changes scheduling state; denied app/channel prevents publication; malformed scope/device tuple rejects scheduling. Real plugin methods also exercise consent, notification/exact Settings intents, paused timer frozen text, silent live channel and independent timer preservation. Existing system-rendered chronometer tick/feeding-transition tests still pass. It does not simulate process kill, physical reboot, actual permission-dialog UX, OEM delivery or power policy.
+
+The application cross-store race regression was observed **failing before** replacing `whenIdle()`-only scheduling with the write-queue-held snapshot, then passed after that repair. Other new tests exercise actual storage preparation/suppression/import, stable key under revision change, exclusion of device ID from backup and fail-closed cancellation persistence. Native delivery is not asserted from mocked JavaScript status responses. Initial isolated native harness lacked `android.useAndroidX` and was corrected; native clock tests initially advanced only the Android clock while app classes used real time, then were fixed with Robolectric package instrumentation. Angular full-suite execution exposed unsupported relative mocks, an incomplete existing Capacitor mock and duplicate plugin registration; tests now use package-native mocks/platform spy and production reuses one registration. These intermediate failures are not counted as passing evidence.
+
+##### 4.3. Actual isolated browser surface
+
+Used actual Angular devserver `http://localhost:4330`, newly created isolated Orca profile `stage4-reminders-synthetic` (`a97b88d6-f3a9-405c-a948-c979f74b13ac`), no personal account or diary. Seeded only a synthetic four-month profile/routine/manual wake and empty diary/timers. The real Settings assistant checkbox and form submission changed false→true, persisted it, and navigation to Tracker showed the existing ready forecast with null sleep timer/zero events. The new delivery region correctly said **Android APK only / iPhone PWA delivery not connected**, with zero Android enable/settings controls on web. Final rebuilt page retained forecast and honest unavailable state. This is actual **web Settings/family toggle/forecast UI**, not a claim of Android permission/enable-gesture UX; that native surface still needs an authorized Android runtime. No fake web notification fallback was introduced.
+
+##### 4.4. Exact open blockers and next required setup
+
+1. Actual read-only `/opt/homebrew/share/android-commandlinetools/platform-tools/adb devices -l` returned **an empty device list**. No emulator/system-image installation was present in the inspected SDK. Parent was asked for an authorized separate synthetic installation/test scope on physical **API31+ and API33+** devices, recorded OS/OEM/build/permission/exact/channel state and intended/actual display timestamps. No install, permission mutation, reboot, power/force-stop change or real diary access was performed. Full §0.5 closed/offline/reboot/Doze/battery/denial/revocation/reschedule/cancel/time-change/quiet-timer physical matrix remains unperformed; acceptance is blocked.
+2. **Historical dependency blocker, now resolved by §4.6:** the initial offline full-root native command stopped configuring `:capacitor-filesystem` because `org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.20` was not cached. The user subsequently explicitly authorized public Gradle/Maven/Google Kotlin/Android dependency downloads; the full native tests and unsigned integrated APK build then passed. This no longer blocks local compilation. Physical delivery acceptance remains open.
+3. No Android native WebView Settings enable/permission UI, physical API31/API33 access path, lower API24 device, native process-death/reboot/power behavior, production family transport or installed iPhone delivery was exercised. An APK build alone cannot close these gates. Parent owns stage acceptance and any accepted-stage commit/push; this worker must not start stage 5.
+
+##### 4.5. Cleanup, sources and guidance
+
+Observed cleanup: closed synthetic page `b6a08e48-978f-4ef0-9dc2-fdd3e8423053`, deleted only newly created isolated profile `a97b88d6-f3a9-405c-a948-c979f74b13ac` including its synthetic local diary, stopped Angular MCP devserver, and removed `/tmp/lulio-stage4-native.StMKHj` including temporary Gradle harness state. No test installation, database, download, signing material or cloud resource was created. Native build outputs/test reports and normal build-tool caches remain local generated artifacts, not a deployed app.
+
+Rechecked official [Android alarms](https://developer.android.com/develop/background-work/services/alarms), [notification runtime permission](https://developer.android.com/develop/ui/compose/notifications/notification-permission) and [Capacitor native plugin permissions](https://capacitorjs.com/docs/plugins/android), with generic public Context7 queries only and no source upload. Local Angular workspace/version standards and installed plugin contracts were read. `DEPLOY.md` release restrictions were read; no release action followed.
+
+##### 4.6. Authorized integrated native build follow-up — 25 October 2026
+
+**Outcome: full-project native compilation/test prerequisite closed; physical stage-4 acceptance remains pending.** The coordinator relayed explicit user approval for public Kotlin/Android Gradle/Maven/Google dependency downloads for local build/tests, excluding source upload, signing, publication and physical installation. This focused follow-up made **no production or test code changes** and did not rerun the already successful TypeScript/production/156-Vitest sequence merely to confirm it. Only this evidence, README and SPEC are updated; the parent owns Git snapshot/commit/push.
+
+Executed from the actual `android/` project using `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home` and `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`:
+
+```text
+./gradlew :baby-tracker-timer-notification:testDebugUnitTest
+```
+
+Observed **BUILD SUCCESSFUL in 28s; 45 tasks, 15 executed/30 up-to-date**. Real root-project configuration/dependency resolution no longer fails at capacitor-filesystem/Kotlin 2.2.20. JUnit XML timestamps **14:28:22 UTC** and **14:28:26 UTC** report **12 preparation receiver cases + 8 timer/plugin cases, zero failures/errors**, on the same API32/API36 Robolectric Android-service environment documented in §4.2. This is the integrated project, not the earlier temporary isolated settings harness.
+
+Then ran the standard installed Capacitor CLI from the repository root:
+
+```text
+npx --no-install cap sync android
+```
+
+Observed successful copy of the already verified `www` production bundle to generated Android assets and normal regeneration of Capacitor plugin/config/Gradle integration, with **11 plugins** including the owned timer/preparation plugin. No generated `android/` file was manually edited; these changes are normal CLI output. No source/dependency version or application identity was changed.
+
+To avoid reading/generating any signing key, created a **temporary external** `/tmp/lulio-stage4-integrated.sdMCie/unsigned-debug.gradle`, registering the official AGP `androidComponents.finalizeDsl` callback from a `gradle.beforeProject` / application-plugin callback and setting `android.buildTypes.getByName('debug').signingConfig = null` before variants/tasks are created. This uses the documented [AGP 8.13 DSL lifecycle](https://developer.android.com/reference/tools/gradle-api/8.13/com/android/build/api/variant/DslLifecycle); it does not open signing configuration or key material and does not modify generated native project source. Executed:
+
+```text
+./gradlew --init-script /tmp/lulio-stage4-integrated.sdMCie/unsigned-debug.gradle :app:assembleDebug
+```
+
+Observed **BUILD SUCCESSFUL in 34s; 281 tasks, 233 executed/48 up-to-date**, including actual app Java/Kotlin compilation, dex/resource/manifest/web-asset integration and APK packaging. No release task or signing task ran. Existing `flatDir`, SDK XML parser-version, unchecked/deprecated API and multiple Kotlin-daemon warnings were visible; none failed the build or were suppressed.
+
+| Actual packaged artifact inspection | Observed result |
+| --- | --- |
+| File | `android/app/build/outputs/apk/debug/app-debug-unsigned.apk` |
+| Byte size (`stat -f '%z bytes'`) | **5,097,897 bytes** |
+| SHA-256 (`shasum -a 256`) | `f9d2a1cba949f5f44610d4143f6a9fb2b10cda9eca9d533c5a31844c423b0fdd` |
+| SDK35 `aapt dump badging` | `io.ionic.starter`, **debuggable**, generated versionCode **1**, versionName **1.0**, min SDK **24**, target/compile SDK **36** |
+| SDK35 `aapt dump xmltree … AndroidManifest.xml` | Required `POST_NOTIFICATIONS`, `SCHEDULE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED`; owned `ru.babytracker.timernotification.PreparationReminderReceiver` **exported=false** with BOOT_COMPLETED, TIME_SET, TIMEZONE_CHANGED, MY_PACKAGE_REPLACED and SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED actions |
+| SDK35 `apksigner verify --verbose` | Expected **exit 1 / DOES NOT VERIFY / Missing META-INF/MANIFEST.MF**: intentionally unsigned, not a failed release signature or an installable signed artifact |
+
+Stock Local Notifications components remain in the merged APK because the existing dependency remains installed; preparation work still exclusively uses the owned receiver/ledger, not its overdue-reboot restore behavior. The application manifest's preexisting `allowBackup=true` does not relocate the new ledger from Android `noBackupFilesDir`; consent/device/sent state is not put into backed-up Preferences/family data.
+
+**Cleanup observed:** removed the entire uniquely created `/tmp/lulio-stage4-integrated.sdMCie` after inspection, including unsigned init override; no service, synthetic profile, installation or signing key was created in this follow-up. Public resolved build dependencies remain in normal local caches; the unsigned generated APK and JUnit/build reports remain as local evidence, not a published release. Parent requested and received a zero-source-change safe checkpoint before updating these docs. No Git mutation was performed by this worker.
+
+**Still unperformed:** authorized physical API31+/API33+ test installation, actual native WebView enable/permission/exact-access Settings UX, closed/offline/reboot/Doze/battery/revocation/reschedule/cancel/time-change/native-click/live-timer phone scenarios, lower API24 device compatibility and iPhone/server stage 5. The earlier empty adb-device observation remains the exact hardware prerequisite; no physical install or device/diary mutation was authorized or attempted. Full stage 4 is not accepted merely because native compilation now passes.
+
+
+### Modern Web Guidance — Stage 4
+
+- **`accessibility`**: I retained existing Ionic button semantics and exposed delivery changes through a status region with explicit section headings, rather than inventing custom checkbox/ARIA behavior (“Don't assume custom elements have no ARIA”). The actual web accessibility snapshot showed the new named reminder region; Android native controls, axe and assistive-technology behavior are not claimed verified.
+
+
 ### Этап 5. Уведомления iPhone PWA
 
 **Зависимости:** этап 4 и выбранная на этапе 0 инфраструктура.

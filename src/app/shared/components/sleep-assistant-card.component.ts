@@ -4,6 +4,7 @@ import { SleepForecastService } from '../../core/services/sleep-forecast.service
 import { StorageService } from '../../core/services/storage.service';
 import { ClockService } from '../../core/services/clock.service';
 import { cycleMatches } from '../../core/services/sleep-preparation';
+import { PreparationReminderService } from '../../core/services/preparation-reminder.service';
 
     const labels: Record<string, string> = {
       'assistant-disabled': 'Помощник выключен', 'active-sleep-including-pause': 'Сон активен, включая паузу',
@@ -35,6 +36,7 @@ import { cycleMatches } from '../../core/services/sleep-preparation';
         <p>{{ explanation() }}</p>
         @if (plan.state === 'sleeping') { <p>{{ completedPreparationLabel() }}</p> }
       }
+      <p role="status">{{ reminders.description() }}</p>
       <details>
         <summary>Основание и ограничения прогноза</summary>
       @if (plan.anchor) {
@@ -45,7 +47,7 @@ import { cycleMatches } from '../../core/services/sleep-preparation';
         @if (plan.nightConflict) { <p>Конфликт с желаемым началом ночи: {{ plan.nightConflict === 'before-target' ? 'раньше диапазона' : 'позже диапазона' }}. Прогноз не подгоняется под режим.</p> }
         @if (plan.targetNight; as target) { <p>Желаемая ночь {{ time(target.from) }}–{{ time(target.to) }}.</p> }
         <ul>@for (reason of plan.reasons; track reason) { <li>{{ reasonLabel(reason) }}</li> }</ul>
-        <p>Это приблизительный ориентир, не медицинская рекомендация. Фоновые напоминания ещё не подключены.</p>
+        <p>Это приблизительный ориентир, не медицинская рекомендация. Получение на этом устройстве включается отдельно в Профиле. Недавние семейные изменения без обмена могут быть неизвестны этому телефону.</p>
       </details>
       @if (preparation()) {
         <div class="actions">
@@ -68,6 +70,7 @@ import { cycleMatches } from '../../core/services/sleep-preparation';
 })
 export class SleepAssistantCardComponent {
   readonly forecasts = inject(SleepForecastService);
+  readonly reminders = inject(PreparationReminderService);
   private readonly storage = inject(StorageService);
   private readonly clock = inject(ClockService);
   readonly clarify = output<void>();

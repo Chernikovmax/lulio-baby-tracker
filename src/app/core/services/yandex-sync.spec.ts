@@ -17,7 +17,7 @@ vi.mock('@capacitor/preferences', () => ({
 }));
 vi.mock('@capacitor/core', () => ({
   CapacitorHttp: { request: async () => ({ status: 500, data: null, headers: {}, url: '' }) },
-  Capacitor: { isNativePlatform: () => false },
+  Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' },
   registerPlugin: () => ({}),
 }));
 

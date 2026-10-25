@@ -122,6 +122,83 @@ public class TimerNotificationPlugin extends Plugin {
         return result;
     }
 
+    @PluginMethod
+    public void preparationStatus(PluginCall call) {
+        try { call.resolve(new PreparationReminder(getContext()).status()); }
+        catch (Exception error) { call.reject("Не удалось прочитать состояние напоминаний."); }
+    }
+
+    @PluginMethod
+    public void preparationInvalidate(PluginCall call) {
+        try { call.resolve(new PreparationReminder(getContext()).invalidate()); }
+        catch (Exception error) { call.reject("Не удалось отменить прежнее напоминание."); }
+    }
+
+    @PluginMethod
+    public void preparationConsent(PluginCall call) {
+        try {
+            boolean enabled = Boolean.TRUE.equals(call.getBoolean("enabled", false));
+            new PreparationReminder(getContext()).consent(enabled);
+            if (enabled && needsPermission() && getPermissionState("notifications") != PermissionState.DENIED) {
+                requestPermissionForAlias("notifications", call, "preparationAfterPermission");
+            } else preparationAfterPermission(call);
+        } catch (Exception error) { call.reject("Не удалось изменить получение напоминаний."); }
+    }
+
+    @PermissionCallback
+    private void preparationAfterPermission(PluginCall call) {
+        preparationStatus(call);
+    }
+
+    @PluginMethod
+    public void preparationReconcile(PluginCall call) {
+        try {
+            call.resolve(new PreparationReminder(getContext()).reconcile(
+                call.getData().getLong("generation"), call.getData().optJSONObject("plan"),
+                call.getString("blockedKey")));
+        } catch (Exception error) { call.reject("Не удалось запланировать напоминание."); }
+    }
+
+    @PluginMethod
+    public void preparationSettings(PluginCall call) {
+        try {
+            Intent intent;
+            if (Boolean.TRUE.equals(call.getBoolean("exact", false)) && Build.VERSION.SDK_INT >= 31) {
+                intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                    android.net.Uri.parse("package:" + getContext().getPackageName()));
+            } else if (Build.VERSION.SDK_INT >= 26 && !manager.areNotificationsEnabled()) {
+                intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+            } else if (Build.VERSION.SDK_INT >= 26) {
+                intent = new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName())
+                    .putExtra(Settings.EXTRA_CHANNEL_ID, PreparationReminder.CHANNEL);
+            } else {
+                intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:" + getContext().getPackageName()));
+            }
+            getActivity().startActivity(intent);
+            preparationStatus(call);
+        } catch (Exception error) { call.reject("Настройки Android недоступны."); }
+    }
+
+    @PluginMethod
+    public void preparationTakeOpen(PluginCall call) {
+        Intent intent = getActivity().getIntent();
+        JSObject result = new JSObject();
+        result.put("open", intent != null && intent.getBooleanExtra(PreparationReminder.OPEN, false));
+        if (intent != null) intent.removeExtra(PreparationReminder.OPEN);
+        call.resolve(result);
+    }
+
+    @Override
+    protected void handleOnNewIntent(Intent intent) {
+        if (intent != null && intent.getBooleanExtra(PreparationReminder.OPEN, false)) {
+            getActivity().setIntent(intent);
+            notifyListeners("preparationOpened", new JSObject());
+        }
+    }
+
     private void show(int id, JSONObject timer) throws JSONException {
         if (timer == null) {
             manager.cancel(TAG, id);

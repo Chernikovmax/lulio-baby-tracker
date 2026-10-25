@@ -15,6 +15,7 @@ import { TimerNotificationService } from '../../core/services/timer-notification
 import { PwaService } from '../../core/services/pwa.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { isSleepRoutine, type SleepRoutine } from '../../core/models/sleep-routine.models';
+import { PreparationReminderService } from '../../core/services/preparation-reminder.service';
 
 const today = () => {
   const date = new Date();
@@ -32,6 +33,7 @@ export class SettingsPage {
   readonly sync = inject(SyncService);
   readonly yandex = inject(YandexSyncService);
   readonly timerNotifications = inject(TimerNotificationService);
+  readonly preparationReminders = inject(PreparationReminderService);
   readonly pwa = inject(PwaService);
   readonly theme = inject(ThemeService);
   readonly routineModel = signal({
