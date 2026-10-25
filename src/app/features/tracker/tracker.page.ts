@@ -66,11 +66,15 @@ export class TrackerPage {
     if (!profile) return null;
     const birth = new Date(`${profile.birthDate}T00:00:00`);
     const day = new Date(this.selectedDate());
+    const monthsLater = (count: number) => {
+      const lastDay = new Date(birth.getFullYear(), birth.getMonth() + count + 1, 0).getDate();
+      return new Date(birth.getFullYear(), birth.getMonth() + count, Math.min(birth.getDate(), lastDay));
+    };
     let months = (day.getFullYear() - birth.getFullYear()) * 12 + day.getMonth() - birth.getMonth();
-    let anchor = new Date(birth.getFullYear(), birth.getMonth() + months, birth.getDate());
+    let anchor = monthsLater(months);
     if (anchor > day) {
       months--;
-      anchor = new Date(birth.getFullYear(), birth.getMonth() + months, birth.getDate());
+      anchor = monthsLater(months);
     }
     const days = Math.floor((Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()) - Date.UTC(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())) / DAY_MS);
     if (months >= 12) return `${Math.floor(months / 12)} г. ${months % 12} мес.`;

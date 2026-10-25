@@ -7,10 +7,10 @@ import { TrackerPage } from './tracker.page';
 
 const localDate = (day: number, hour = 12) => new Date(2026, 9, day, hour);
 
-function setup() {
+function setup(birthDate = '2026-06-17') {
   TestBed.configureTestingModule({
     providers: [{ provide: StorageService, useValue: {
-      profile: signal({ id: 'baby', name: 'Малыш', birthDate: '2026-06-17', dueDate: '2026-06-15', gender: 'boy' }),
+      profile: signal({ id: 'baby', name: 'Малыш', birthDate, dueDate: '2026-06-15', gender: 'boy' }),
       events: signal([]), isLoading: signal(false), error: signal(null),
     } }],
   });
@@ -60,5 +60,15 @@ describe('Дата дневника и возраст ребёнка', () => {
     clock.refresh();
     expect(page.babyAge()).toBe('4 мес. 7 дн.');
     expect(page.isToday()).toBe(true);
+  });
+
+  it('не показывает отрицательные дни у ребёнка, родившегося в конце месяца', () => {
+    vi.setSystemTime(new Date(2026, 2, 1, 12));
+    const { page } = setup('2026-01-31');
+    expect(page.babyAge()).toBe('1 мес. 1 дн.');
+    page.moveDate(1);
+    expect(page.babyAge()).toBe('1 мес. 2 дн.');
+    page.moveDate(-2);
+    expect(page.babyAge()).toBe('1 мес. 0 дн.');
   });
 });
