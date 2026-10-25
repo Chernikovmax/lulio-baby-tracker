@@ -15,7 +15,7 @@ const www = resolve(root, 'www');
 await readFile(join(www, 'ngsw.json')); // Require a production bundle, not ng serve.
 const temp = await mkdtemp(join(tmpdir(), 'lulio-android-smoke-'));
 const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(temp, 'browsers') };
-let browser, context, server;
+let browser, context, server, page;
 const errors = [];
 const external = [];
 async function cleanup() {
@@ -67,7 +67,7 @@ try {
     external.push(new URL(route.request().url()).origin);
     return route.abort();
   });
-  const page = await context.newPage();
+  page = await context.newPage();
   page.setDefaultTimeout(15_000);
   page.on('pageerror', error => errors.push(error.message));
   const themeKey = 'CapacitorStorage.baby-tracker-theme';
@@ -118,7 +118,7 @@ try {
   console.log('PASS failed theme save: previous palette and durable selection retained');
 
   await page.goto(`${origin}/tabs/tracker`);
-  await page.locator('app-quick-action-dock ion-button[aria-label="Сон"]').click();
+  await page.locator('app-quick-action-dock').getByRole('button', { name: 'Сон', exact: true }).click();
   let modal = page.locator('ion-modal:visible');
   await modal.getByRole('button', { name: 'Начать сон', exact: true }).click();
   await modal.getByRole('button', { name: 'Пауза', exact: true }).waitFor();
@@ -134,7 +134,7 @@ try {
   await page.waitForFunction(at => Date.now() - Date.parse(at) >= 1200, paused.pausedAt);
   assert.equal(await modal.locator('.elapsed').innerText(), elapsed, 'Paused elapsed time must not grow');
   await page.reload();
-  await page.locator('app-quick-action-dock ion-button[aria-label="Сон: таймер запущен"]').click();
+  await page.locator('app-quick-action-dock').getByRole('button', { name: 'Сон: таймер запущен', exact: true }).click();
   modal = page.locator('ion-modal:visible');
   await modal.getByText('Сон на паузе', { exact: true }).waitFor();
   assert.deepEqual((await diary()).activeTimers.sleepTimer, paused);
@@ -162,6 +162,11 @@ try {
   assert.deepEqual(external, [], 'Unexpected external requests (all were blocked)');
   console.log(`PASS unsupported stored theme: default fallback; Chromium ${browser.version()}; no page exceptions or external requests`);
   console.log('Browser smoke passed against local production www/; native APK/device and service-worker lifecycle are not covered.');
+} catch (error) {
+  // Only this synthetic context is inspected; never attach a user's browser.
+  console.error({ url: page?.url(), pageErrors: errors, externalRequests: external,
+    buttons: page ? await page.getByRole('button').allTextContents() : [] });
+  throw error;
 } finally {
   await cleanup();
 }
