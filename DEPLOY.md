@@ -61,6 +61,20 @@ Replace `<VERSION>` with the numeric version. Compare the public signer certific
 - Freshly downloaded trusted v1.3.0 attachments passed checksum/signature verification; package **io.ionic.starter**, versionCode **1003000**, public signer SHA-256 **`caf549bd5fdb2248856e820b70efbda2c895890328eee189fa512df35156ee13`**.
 - `adb devices -l` found no connected devices. Physical install, native launch, update from v1.3.0, and diary/timer data retention remain unverified. Signed publication and downloaded v1.4.0 verification are recorded separately after CI succeeds.
 
+### Android 1.4.0 publication receipt (2026-10-25)
+
+- **Release:** https://github.com/Chernikovmax/lulio-baby-tracker/releases/tag/v1.4.0 — published **07:46:26Z**, not draft or prerelease; confirmed latest.
+- **APK:** https://github.com/Chernikovmax/lulio-baby-tracker/releases/download/v1.4.0/lulio-baby-tracker-v1.4.0.apk — **3,948,664 bytes**. Both this signed attachment and `SHA256SUMS` were downloaded from the actual Release into `dist/android-release-verification/v1.4.0/`, not from a branch/unsigned artifact.
+- **Immutable source/tag:** `v1.4.0` resolves remotely to **`113847754d4d4151f64ddc8a3f9580bf13311112`**, the squash merge of release-preparation [PR #3](https://github.com/Chernikovmax/lulio-baby-tracker/pull/3). Its sole parent is pinned feature commit **`4945ceb83f9d188d11bdf3bc2b7eca75b8bf360c`**; its tree exactly matches locally verified preparation **`544788acab6cd189b8fa5e3f574c8e7b4012a802`**. No later main commits entered the release.
+- **CI:** https://github.com/Chernikovmax/lulio-baby-tracker/actions/runs/40173809891 — exact tag/SHA; **build** and **release** succeeded, including signature/alignment verification and publication. Preparation PR build/security checks passed. Action-runtime/setup-java deprecation and runner-image migration notices were non-fatal; the published workflow was not rerun.
+- **Downloaded-byte verification:** `shasum -a 256 -c SHA256SUMS` passed. Independently calculated SHA-256:
+  - `lulio-baby-tracker-v1.4.0.apk`: **`b56c77f8a8b80bb45becac861338ce4cc734c755cd8f2c09fe317e213235d8c2`**.
+  - `SHA256SUMS`: **`a0716500d9a38d96f118774204b753077e1e8ac74e2be9b00215110355cc6f6b`**.
+- **SDK verification:** installed build-tools **35.0.0** `apksigner verify --verbose --print-certs` passed, one signer with v2/v3 signatures; `zipalign -c -p 4` passed. `aapt dump badging` confirmed **io.ionic.starter**, versionName **1.4.0**, versionCode **1004000**, min SDK **24**, target SDK **36**.
+- **Signing continuity:** fresh actual v1.3.0 Release downloads passed published checksum and signature checks. Both APKs have public signer SHA-256 **`caf549bd5fdb2248856e820b70efbda2c895890328eee189fa512df35156ee13`**; application ID matches and versionCode increases from **1003000** to **1004000**. Only the approved CI signing workflow accessed configured signing secrets; no private signing material or secret values were read.
+- **Runtime and limits:** final production-bundle browser smoke additionally confirmed both palettes survive reload. Local mandatory checks passed **103/103 tests, 19 files** after the approved test-only repair. A final `adb devices -l` again found no connected device: physical installation, native launch/lifecycle, in-place update and diary/timer data retention are **unverified**. No uninstall, storage clearing, or PWA deployment occurred.
+- This post-publication documentation receipt does not move the release tag or change its APK source.
+
 ### Android 1.3.0 release preparation (2026-10-24)
 
 - Requested baseline: `b0161b6055fa6cca03c91a3a6db8ea1e5abdd513`. Its model declarations prevented TypeScript, production build, and test compilation. The owner explicitly authorized a minimal repair before publication.
