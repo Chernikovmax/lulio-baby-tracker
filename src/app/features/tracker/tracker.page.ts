@@ -2,7 +2,7 @@ import { DatePipe, registerLocaleData } from '@angular/common';
 import localeRu from '@angular/common/locales/ru';
 import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import {
-  IonButton, IonContent, IonFooter, IonIcon, IonItem, IonItemOptions, IonItemSliding, IonList,
+  IonAlert, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonItemOptions, IonItemSliding, IonList,
   IonItemOption, IonLabel, IonSegment, IonSegmentButton, IonSpinner, IonText,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
@@ -33,7 +33,7 @@ const localDayStart = (date: Date): number => new Date(date.getFullYear(), date.
   templateUrl: './tracker.page.html',
   styleUrl: './tracker.page.scss',
   imports: [
-    DatePipe, DurationFormatPipe, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonList,
+    DatePipe, DurationFormatPipe, IonAlert, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonList,
     IonItemSliding, IonItemOptions, IonItemOption, IonLabel, IonSegment, IonSegmentButton,
     IonSpinner, IonText, LiveStatusBannerComponent, QuickActionDockComponent,
     SleepModalComponent, FeedingModalComponent, DiaperModalComponent, EventTimeModalComponent,
@@ -55,6 +55,8 @@ export class TrackerPage {
   readonly editingEvent = signal<AnyTrackerEvent | null>(null);
   readonly feedingInitialTab = signal<'breastfeeding' | 'bottle'>('breastfeeding');
   readonly deletingIds = signal<ReadonlySet<string>>(new Set());
+  readonly pendingDelete = signal<{ event: AnyTrackerEvent; sliding: IonItemSliding } | null>(null);
+  readonly deleteButtons = [{ text: 'Отмена', role: 'cancel' }, { text: 'Удалить', role: 'destructive' }];
   readonly errorMessage = signal<string | null>(null);
   readonly profile = this.storage.profile;
   readonly isLoading = this.storage.isLoading;
@@ -163,6 +165,16 @@ export class TrackerPage {
       this.feedingInitialTab.set(action);
       this.feedingModalOpen.set(true);
     } else this.diaperModalOpen.set(true);
+  }
+  requestDelete(event: AnyTrackerEvent, sliding: IonItemSliding): void {
+    if (!this.deletingIds().has(event.id)) this.pendingDelete.set({ event, sliding });
+  }
+  async onDeleteDismiss(role: string | undefined): Promise<void> {
+    const pending = this.pendingDelete();
+    this.pendingDelete.set(null);
+    if (!pending) return;
+    if (role === 'destructive') await this.deleteEvent(pending.event, pending.sliding);
+    else await pending.sliding.close();
   }
   async deleteEvent(event: AnyTrackerEvent, sliding: IonItemSliding): Promise<void> {
     if (this.deletingIds().has(event.id)) return;

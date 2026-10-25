@@ -1,6 +1,8 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Preferences } from '@capacitor/preferences';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DiaperEvent } from '../../core/models/tracker.models';
 import { ClockService } from '../../core/services/clock.service';
 import { StorageService } from '../../core/services/storage.service';
 import { TrackerPage } from './tracker.page';
@@ -70,5 +72,46 @@ describe('Дата дневника и возраст ребёнка', () => {
     expect(page.babyAge()).toBe('1 мес. 2 дн.');
     page.moveDate(-2);
     expect(page.babyAge()).toBe('1 мес. 0 дн.');
+  });
+});
+
+describe('Удаление записи из ленты', () => {
+  const diaper: DiaperEvent = { id: 'diaper', type: 'diaper', state: 'wet',
+    startTime: '2026-10-20T07:00:00.000Z', updatedAt: '2026-10-20T07:00:00.000Z' };
+
+  async function render() {
+    await Preferences.remove({ key: 'baby-tracker.v1' });
+    TestBed.configureTestingModule({});
+    const storage = TestBed.inject(StorageService);
+    await storage.ready();
+    await storage.saveEvent(diaper);
+    const fixture = TestBed.createComponent(TrackerPage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return { storage, fixture, page: fixture.componentInstance };
+  }
+  afterEach(() => {
+    TestBed.resetTestingModule();
+    vi.restoreAllMocks();
+  });
+
+  it('не удаляет запись одним нажатием на корзину', async () => {
+    const { storage, fixture } = await render();
+    const trash = fixture.nativeElement.querySelector('ion-button[aria-label="Удалить: Подгузник · мокрый"]') as HTMLElement;
+    trash.click();
+    await fixture.whenStable();
+    expect(storage.events()).toEqual([diaper]);
+  });
+
+  it('удаляет запись только после подтверждения', async () => {
+    const { storage, page } = await render();
+    const sliding = { close: vi.fn(async () => true) };
+    page.requestDelete(diaper, sliding as never);
+    await page.onDeleteDismiss('cancel');
+    expect(storage.events()).toEqual([diaper]);
+    expect(sliding.close).toHaveBeenCalled();
+    page.requestDelete(diaper, sliding as never);
+    await page.onDeleteDismiss('destructive');
+    expect(storage.events()).toEqual([]);
   });
 });
