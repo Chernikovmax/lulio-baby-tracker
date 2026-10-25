@@ -9,7 +9,10 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "lint": "ng lint"
+    "lint": "ng lint",
+    "test:pwa": "node --test scripts/*.test.mjs",
+    "smoke:pwa": "node scripts/smoke-pwa.mjs",
+    "serve:pwa": "node scripts/serve-pwa.mjs"
   },
   "private": true,
   "dependencies": {

@@ -146,15 +146,76 @@ node scripts/publish-pwa.mjs <bucket-without-dots>
 
 `dist/pwa/upload-plan.json` is the authoritative ordered allowlist. Its `file` entries point to local encoded filenames beneath `dist/pwa/files`; its `key` entries are actual S3 keys. This separation permits an extensionless `tabs` object and `tabs/index.html` simultaneously. Do **not** recursively upload `files/` using their local filenames. The preparer validates every SW-listed resource against its generated SHA-1 before staging. It includes only those resources, SW runtime scripts, license notices, and the explicit HTML aliases. A reused staging directory may contain old files; only the current plan is publishable.
 
-The publisher requires a preinstalled **AWS CLI** and an explicitly authorized authenticated environment. Configure authentication privately using the operator's approved mechanism; never print/read credential files or paste keys into this session. Use the Yandex console to create/configure the dedicated Russia bucket, enable website hosting with index `index.html`, and allow public object reads only. Do not set up extra billable services.
+The publisher uses a preinstalled **AWS CLI** (default `--transport=aws`) or **Yandex CLI** (`--transport=yc`) in an explicitly authorized environment. Use the existing configured bucket and approved operator session. Configure any missing authentication privately through the operator's approved mechanism, under a separate authorization; never inspect credential files or paste keys into this session. The publisher does not create infrastructure, configure hosting, expand permissions, or delete objects.
 
-After the operator explicitly approves potentially billable operations:
+Only after the operator explicitly approves potentially billable operations:
 
 ```sh
-node scripts/publish-pwa.mjs <actual-bucket-without-dots> --confirm-billable-operations
+# Existing authenticated Cloud Shell, with this checkout's scripts and pinned public staging:
+node scripts/publish-pwa.mjs lulio --transport=yc --confirm-billable-operations
+# Alternatively, an already authorized AWS CLI environment:
+node scripts/publish-pwa.mjs lulio --transport=aws --confirm-billable-operations
 ```
 
-The script calls `aws --endpoint-url https://storage.yandexcloud.net --region ru-central1 s3api put-object` with STANDARD storage and explicit MIME/cache metadata. It does not create a bucket, change permissions, or delete remote objects. Confirm the actual bucket region in the console; a CLI signing-region argument alone does not provision or prove its location. Each uploaded object is fetched from `https://<bucket>.website.yandexcloud.net/<key>` and verified for HTTP 200, MIME, cache-control, and byte equality before proceeding. `ngsw.json` is last. Stop on errors and apply the matching-release rollback procedure above; uploads are not atomic.
+Both transports use `s3api put-object`, STANDARD storage, and explicit MIME/cache metadata. The AWS endpoint is `https://storage.yandexcloud.net`, signing region `ru-central1`; confirm the bucket's actual region independently. The local dry run validates the entire plan and local resource hashes without network requests or cloud CLI calls. Confirmation is required even for a resume.
+
+The publication protocol is:
+
+1. Capture the current public entrypoint/manifest bytes as hashes and metadata for a concurrency baseline. This is **not a rollback backup**: preserve the complete previous release archive separately before mutation.
+2. For each dependency, compare current public HTTP bytes, MIME, and Cache-Control with the pinned local object. Skip its PUT only on an exact match; a metadata-only mismatch requires repair. Up to four dependency operations run concurrently. A failure stops admission and drains already-running workers before returning; entrypoints remain blocked.
+3. Check all entrypoints and `ngsw.json` against the baseline or the intended release, then process the web manifest, index and route aliases sequentially. Recheck every dependency and entrypoint before publishing `ngsw.json` last.
+4. Perform a fresh final public HTTP verification of **every** object, including skipped objects, before writing a complete receipt. Keep the separate build-machine/public-origin acceptance below; another pass by this publisher is not a second independent client.
+
+GETs have bounded retries and a 30-second request/body timeout; unexpected statuses such as 403 fail closed. The publisher invokes the PUT transport once, with no application-level write retry. Installed AWS/yc versions may have internal retry policies: verify those privately before an authorized cloud run; loopback rehearsal does not validate cloud-client internals. Each attempted write is journaled as uncertain **before** the transport runs. After interruption, `--resume` binds to the same target, transport and complete resource hashes/metadata, and rereads public state rather than trusting a prior "verified" flag or repeating an uncertain PUT blindly:
+
+```sh
+node scripts/publish-pwa.mjs lulio --transport=yc --confirm-billable-operations --resume
+```
+
+Private local operator state is in ignored `dist/pwa-publication/<bucket>.journal.json`, `.receipt.json`, and `.lock`. Successful completion replaces the receipt and removes the journal. Compare a receipt's target and artifact identity, not just its existence. Counters record PUT attempts, exact-match skips and GET attempts (including retries and final checks); elapsed time covers the publisher attempt, not the build or terminal transfer. A stale lock is never stolen automatically. Before manually removing one, positively establish that its owner and all in-flight transport processes have exited and reconcile any uncertain writes. The lock coordinates only this filesystem, **not** other machines or Cloud Shell sessions: retain one deployment owner.
+
+An error leaves the publication incomplete; no automatic rollback is attempted. Use the matching-release rollback procedure above after any entrypoint transition failure. Multiple object writes are **not atomic**, and baseline checks cannot eliminate races with another writer. Retain cached-client chunks, old-tab dependencies and the known rollback archive; never clear diary storage to make recovery pass.
+
+### Local publisher and browser rehearsals
+
+These commands do not authorize cloud access or publication. Run them only in the isolated PWA checkout, not the dirty shared checkout or its live devserver.
+
+```sh
+npm run test:pwa
+node scripts/publish-pwa.mjs lulio
+```
+
+The protocol tests exercise an actual loopback object store, including committed PUT with a lost acknowledgement, worker draining, resume, metadata-only repair, concurrent-manifest rejection, and retention of old objects. `--transport=local --loopback-origin=http://127.0.0.1:<port>` is an explicit HTTP PUT rehearsal transport, not a cloud endpoint override. It requires a compatible disposable local object store; the static browser fixture below intentionally refuses PUT. AWS/yc transports are rejected with loopback origins, and local transport cannot target a public origin.
+
+Use an already installed Playwright package and Chromium; these tools do not install packages or download browsers. Supply the absolute module path when Playwright is cached outside the checkout. `--browser-executable` is optional when the module's bundled browser is already installed.
+
+```sh
+npm run smoke:pwa -- --root dist/pwa --plan dist/pwa/upload-plan.json \
+  --playwright-module /absolute/path/to/playwright \
+  --browser-executable /absolute/path/to/chromium
+```
+
+The smoke starts its own loopback server on an available port and a fresh, exclusively owned persistent Chromium profile. It checks exact/trailing-slash HTML aliases, MIME/cache metadata and real missing-asset 404s; creates only a synthetic profile, bottle entries and sleep timer; exercises both themes/reloads and feeding/sleep sheets; verifies serialized diary equality across an actual offline reload and complete browser-process restart; resumes/finishes sleep and opens all four routes offline. Offline documents must be served by the service worker, with no online fallback. Worker state must be NORMAL, Chromium installability errors empty, and page errors absent.
+
+For a real whole-version update rehearsal, extract the retained **public-only** previous-release archive into a fresh disposable directory and supply its `pwa` directory and upload plan:
+
+```sh
+npm run smoke:pwa -- --root dist/pwa --plan dist/pwa/upload-plan.json \
+  --previous-root /absolute/path/to/extracted-old-release/pwa \
+  --previous-plan /absolute/path/to/extracted-old-release/pwa/upload-plan.json \
+  --playwright-module /absolute/path/to/playwright \
+  --browser-executable /absolute/path/to/chromium
+```
+
+This flow first loads the old release and creates synthetic data, switches the same local origin to the new plan while retaining old hashed objects, then uses the application's **Check for update → Reload** controls. It requires changed main/SW manifests, retained old main bytes and byte-identical serialized diary/profile/running timer. It does not publish anything.
+
+Each run writes atomic JSON checkpoints, step timings, sheet screenshots, final results or failure evidence to a fresh `dist/pwa-smoke-<unique>` directory by default (`--evidence <new-directory>` overrides it). The owned profile is retained there for diagnosis; no existing browser profile is accepted. Action waits are bounded at 10 seconds, navigations at 15 seconds, steps at 60 seconds and the scenario at 300 seconds by default; `--step-timeout-ms` / `--timeout-ms` set the latter bounds. Close sheets explicitly and wait for their controls to disappear; do not replace readiness checks with fixed sleeps or forced clicks.
+
+`npm run serve:pwa -- --root dist/pwa --plan dist/pwa/upload-plan.json` serves the static fixture separately. A fresh `www/` root without a plan is also supported. The server only binds loopback, refuses writes, dotfiles, source paths and escaping symlinks; the plan remains an explicit file allowlist. For an existing loopback fixture, use smoke `--origin http://127.0.0.1:<port>` instead of `--root`. Non-loopback smoke needs both separate user network approval and `--approve-external-origin`; the flag alone is not approval. Local browser traffic is restricted to the chosen origin, and fixture CSP blocks external connections. Never use a private diary or enter real sync credentials.
+
+Local tooling verification on 2026-10-25: actual retained v1.3.0 and v1.4.0 archives produced **39 PUT / 27 exact-match skips**; a repeat produced **0 PUT / 66 skips**, with all bytes/MIME/cache checked, old-only objects retained and `ngsw.json` last. The browser whole-version scenario passed locally with both themed sheets, offline reload/process restart and unchanged synthetic diary. These are local protocol/browser results, **not** measured cloud speedup, another deployment, physical-iPhone acceptance or real-account sync verification.
+
+For the existing Cloud Shell operator surface, establish terminal/receiver readiness before transfer, verify the complete pinned archive checksum, and reacquire readiness after a runtime restart. Accepted `fill`/typing/paste is not proof of receipt or execution. Prefer a supported private file-transfer interface when available; React-internal terminal handles are not a stable production interface. Never extract session credentials to work around an unavailable console.
 
 #### Historical preparation (2026-10-21)
 
