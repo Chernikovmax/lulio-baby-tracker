@@ -26,8 +26,8 @@ import { TimerStartOffsetComponent } from '../../timer-start-offset/timer-start-
               @if (timer.sleepTimer(); as running) {
                 <p class="elapsed">{{ timer.sleepDurationSec() | durationFormat:'timer' }}</p>
                 <p>{{ running.pausedAt ? 'Сон на паузе' : (running.isNightSleep ? 'Идёт ночной сон' : 'Идёт дневной сон') }}</p>
-                <ion-button expand="block" fill="outline" [disabled]="pending()" (click)="togglePause()">{{ running.pausedAt ? 'Продолжить сон' : 'Пауза' }}</ion-button>
-                <ion-button expand="block" [disabled]="pending()" (click)="stop()">Завершить сон</ion-button>
+                <ion-button class="night-control-btn" expand="block" fill="outline" [disabled]="pending()" (click)="togglePause()">{{ running.pausedAt ? 'Продолжить сон' : 'Пауза' }}</ion-button>
+                <ion-button class="night-control-btn" expand="block" [disabled]="pending()" (click)="stop()">Завершить сон</ion-button>
               } @else {
                 <div class="toggle" role="group" aria-label="Тип сна">
                   <ion-button expand="block" [fill]="!night() ? 'solid' : 'outline'" [disabled]="pending()" (click)="night.set(false)">День</ion-button>

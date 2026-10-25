@@ -27,7 +27,7 @@ export type QuickAction = 'sleep' | 'breastfeeding' | 'bottle' | 'diaper';
   styles: `
     :host { display: block; background: var(--ion-background-color); border-top: 1px solid #292929; }
     nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 8px max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left)); }
-    ion-button { min-height: 72px; margin: 0; --padding-start: 2px; --padding-end: 2px; --background: #202b40; --color: #edf2ff; font-size: .72rem; text-transform: none; letter-spacing: 0; }
+    ion-button { min-height: 72px; margin: 0; --padding-start: 2px; --padding-end: 2px; --background: var(--app-action-background, #202b40); --color: var(--app-action-color, #edf2ff); font-size: .72rem; text-transform: none; letter-spacing: 0; }
     span { display: flex; align-items: center; flex-direction: column; gap: 5px; } ion-icon { font-size: 24px; }
     ion-badge { font-size: .65rem; max-width: 100%; font-variant-numeric: tabular-nums; }
     .live { animation: pulse 1.8s ease-in-out infinite; }
