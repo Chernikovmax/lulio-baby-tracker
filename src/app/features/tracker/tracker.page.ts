@@ -2,7 +2,7 @@ import { DatePipe, registerLocaleData } from '@angular/common';
 import localeRu from '@angular/common/locales/ru';
 import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import {
-  IonButton, IonContent, IonFooter, IonIcon, IonItem, IonItemOptions, IonItemSliding, IonList,
+  IonAlert, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonItemOptions, IonItemSliding, IonList,
   IonItemOption, IonLabel, IonSegment, IonSegmentButton, IonSpinner, IonText,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
@@ -33,7 +33,7 @@ const localDayStart = (date: Date): number => new Date(date.getFullYear(), date.
   templateUrl: './tracker.page.html',
   styleUrl: './tracker.page.scss',
   imports: [
-    DatePipe, DurationFormatPipe, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonList,
+    DatePipe, DurationFormatPipe, IonAlert, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonList,
     IonItemSliding, IonItemOptions, IonItemOption, IonLabel, IonSegment, IonSegmentButton,
     IonSpinner, IonText, LiveStatusBannerComponent, QuickActionDockComponent,
     SleepModalComponent, FeedingModalComponent, DiaperModalComponent, EventTimeModalComponent,
@@ -55,6 +55,8 @@ export class TrackerPage {
   readonly editingEvent = signal<AnyTrackerEvent | null>(null);
   readonly feedingInitialTab = signal<'breastfeeding' | 'bottle'>('breastfeeding');
   readonly deletingIds = signal<ReadonlySet<string>>(new Set());
+  readonly pendingDelete = signal<{ event: AnyTrackerEvent; sliding: IonItemSliding } | null>(null);
+  readonly deleteButtons = [{ text: 'Отмена', role: 'cancel' }, { text: 'Удалить', role: 'destructive' }];
   readonly errorMessage = signal<string | null>(null);
   readonly profile = this.storage.profile;
   readonly isLoading = this.storage.isLoading;
@@ -66,11 +68,15 @@ export class TrackerPage {
     if (!profile) return null;
     const birth = new Date(`${profile.birthDate}T00:00:00`);
     const day = new Date(this.selectedDate());
+    const monthsLater = (count: number) => {
+      const lastDay = new Date(birth.getFullYear(), birth.getMonth() + count + 1, 0).getDate();
+      return new Date(birth.getFullYear(), birth.getMonth() + count, Math.min(birth.getDate(), lastDay));
+    };
     let months = (day.getFullYear() - birth.getFullYear()) * 12 + day.getMonth() - birth.getMonth();
-    let anchor = new Date(birth.getFullYear(), birth.getMonth() + months, birth.getDate());
+    let anchor = monthsLater(months);
     if (anchor > day) {
       months--;
-      anchor = new Date(birth.getFullYear(), birth.getMonth() + months, birth.getDate());
+      anchor = monthsLater(months);
     }
     const days = Math.floor((Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()) - Date.UTC(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())) / DAY_MS);
     if (months >= 12) return `${Math.floor(months / 12)} г. ${months % 12} мес.`;
@@ -159,6 +165,16 @@ export class TrackerPage {
       this.feedingInitialTab.set(action);
       this.feedingModalOpen.set(true);
     } else this.diaperModalOpen.set(true);
+  }
+  requestDelete(event: AnyTrackerEvent, sliding: IonItemSliding): void {
+    if (!this.deletingIds().has(event.id)) this.pendingDelete.set({ event, sliding });
+  }
+  async onDeleteDismiss(role: string | undefined): Promise<void> {
+    const pending = this.pendingDelete();
+    this.pendingDelete.set(null);
+    if (!pending) return;
+    if (role === 'destructive') await this.deleteEvent(pending.event, pending.sliding);
+    else await pending.sliding.close();
   }
   async deleteEvent(event: AnyTrackerEvent, sliding: IonItemSliding): Promise<void> {
     if (this.deletingIds().has(event.id)) return;

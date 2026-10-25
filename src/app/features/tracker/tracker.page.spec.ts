@@ -1,16 +1,18 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Preferences } from '@capacitor/preferences';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DiaperEvent } from '../../core/models/tracker.models';
 import { ClockService } from '../../core/services/clock.service';
 import { StorageService } from '../../core/services/storage.service';
 import { TrackerPage } from './tracker.page';
 
 const localDate = (day: number, hour = 12) => new Date(2026, 9, day, hour);
 
-function setup() {
+function setup(birthDate = '2026-06-17') {
   TestBed.configureTestingModule({
     providers: [{ provide: StorageService, useValue: {
-      profile: signal({ id: 'baby', name: 'Малыш', birthDate: '2026-06-17', dueDate: '2026-06-15', gender: 'boy' }),
+      profile: signal({ id: 'baby', name: 'Малыш', birthDate, dueDate: '2026-06-15', gender: 'boy' }),
       events: signal([]), isLoading: signal(false), error: signal(null),
     } }],
   });
@@ -60,5 +62,56 @@ describe('Дата дневника и возраст ребёнка', () => {
     clock.refresh();
     expect(page.babyAge()).toBe('4 мес. 7 дн.');
     expect(page.isToday()).toBe(true);
+  });
+
+  it('не показывает отрицательные дни у ребёнка, родившегося в конце месяца', () => {
+    vi.setSystemTime(new Date(2026, 2, 1, 12));
+    const { page } = setup('2026-01-31');
+    expect(page.babyAge()).toBe('1 мес. 1 дн.');
+    page.moveDate(1);
+    expect(page.babyAge()).toBe('1 мес. 2 дн.');
+    page.moveDate(-2);
+    expect(page.babyAge()).toBe('1 мес. 0 дн.');
+  });
+});
+
+describe('Удаление записи из ленты', () => {
+  const diaper: DiaperEvent = { id: 'diaper', type: 'diaper', state: 'wet',
+    startTime: '2026-10-20T07:00:00.000Z', updatedAt: '2026-10-20T07:00:00.000Z' };
+
+  async function render() {
+    await Preferences.remove({ key: 'baby-tracker.v1' });
+    TestBed.configureTestingModule({});
+    const storage = TestBed.inject(StorageService);
+    await storage.ready();
+    await storage.saveEvent(diaper);
+    const fixture = TestBed.createComponent(TrackerPage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return { storage, fixture, page: fixture.componentInstance };
+  }
+  afterEach(() => {
+    TestBed.resetTestingModule();
+    vi.restoreAllMocks();
+  });
+
+  it('не удаляет запись одним нажатием на корзину', async () => {
+    const { storage, fixture } = await render();
+    const trash = fixture.nativeElement.querySelector('ion-button[aria-label="Удалить: Подгузник · мокрый"]') as HTMLElement;
+    trash.click();
+    await fixture.whenStable();
+    expect(storage.events()).toEqual([diaper]);
+  });
+
+  it('удаляет запись только после подтверждения', async () => {
+    const { storage, page } = await render();
+    const sliding = { close: vi.fn(async () => true) };
+    page.requestDelete(diaper, sliding as never);
+    await page.onDeleteDismiss('cancel');
+    expect(storage.events()).toEqual([diaper]);
+    expect(sliding.close).toHaveBeenCalled();
+    page.requestDelete(diaper, sliding as never);
+    await page.onDeleteDismiss('destructive');
+    expect(storage.events()).toEqual([]);
   });
 });

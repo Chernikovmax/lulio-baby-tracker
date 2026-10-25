@@ -6,7 +6,8 @@ import { SyncService } from './sync.service';
 import type { SyncEntry, SyncResponse } from '../models/sync.models';
 
 let client: unknown;
-vi.mock('@supabase/supabase-js', () => ({ createClient: () => client }));
+let created = 0;
+vi.mock('@supabase/supabase-js', () => ({ createClient: () => { created++; return client; } }));
 
 const familyId = '11111111-1111-4111-8111-111111111111';
 const config = { enabled: true, url: 'https://example.supabase.co', anonKey: 'synthetic-public-key', familyId };
@@ -20,6 +21,8 @@ describe('Экономный обмен Supabase', () => {
   let visible: boolean;
   let response: SyncResponse;
   let failExchange: boolean;
+  let failJoin: boolean;
+  let disposed: number;
   let notify: (payload: { new: { version: number } }) => void;
   let calls: ExchangeArgs[];
 
@@ -29,18 +32,19 @@ describe('Экономный обмен Supabase', () => {
     await Preferences.remove({ key: 'baby-tracker.v1' });
     await Preferences.remove({ key: 'baby-tracker.sync.v1' });
     await Preferences.remove({ key: 'baby-tracker.yandex.v1' });
-    visible = true; failExchange = false; response = { version: 1, entries: {} }; calls = [];
+    visible = true; failExchange = false; failJoin = false; response = { version: 1, entries: {} }; calls = [];
+    created = 0; disposed = 0;
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visible ? 'visible' : 'hidden');
     const channel = {
       on: (_event: string, _filter: unknown, callback: typeof notify) => { notify = callback; return channel; },
       subscribe: () => channel,
     };
     client = {
-      auth: { getSession: async () => ({ data: { session: {} }, error: null }), stopAutoRefresh: () => undefined },
+      auth: { getSession: async () => ({ data: { session: {} }, error: null }), dispose: async () => { disposed++; } },
       channel: () => channel,
       removeChannel: async () => 'ok',
       rpc: async (name: string, args: ExchangeArgs) => {
-        if (name === 'join_tracker_family') return { data: null, error: null };
+        if (name === 'join_tracker_family') return { data: null, error: failJoin ? new Error('offline') : null };
         if (name !== 'exchange_tracker_family') throw new Error(`Unexpected RPC: ${name}`);
         calls.push(structuredClone(args));
         return failExchange ? { data: null, error: new Error('offline') } : { data: structuredClone(response), error: null };
@@ -120,5 +124,14 @@ describe('Экономный обмен Supabase', () => {
     expect(calls[0].incoming['event:bottle'].value).toEqual(bottle);
     expect(storage.supabaseCheckpoint()!.pending).toEqual({});
     expect(sync.error()).toBeNull();
+  });
+
+  it('освобождает клиента Supabase после каждой неудачной попытки подключения', async () => {
+    failJoin = true;
+    await connect();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await settle();
+    expect(created).toBeGreaterThan(1);
+    expect(disposed).toBe(created);
   });
 });

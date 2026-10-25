@@ -11,7 +11,9 @@ export interface PatternDay {
   daySleepSec: number;
   nightSleepSec: number;
 }
-const timeLabel = (time: number) => new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(time);
+const timeFormat = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' });
+const dayFormat = new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit' });
+const timeLabel = (time: number) => timeFormat.format(time);
 
 function merge(intervals: Interval[]): Interval[] {
   const result: Interval[] = [];
@@ -59,7 +61,7 @@ export function calculateStats(events: readonly AnyTrackerEvent[], today: number
           label: `${night ? 'Ночной' : 'Дневной'} сон: ${timeLabel(a)}–${b === to ? '24:00' : timeLabel(b)}` });
       }
     }
-    days.push({ start: from, label: new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit' }).format(day), blocks, daySleepSec, nightSleepSec,
+    days.push({ start: from, label: dayFormat.format(day), blocks, daySleepSec, nightSleepSec,
       feedings: feedings.filter(event => Date.parse(event.startTime) >= from && Date.parse(event.startTime) < to).map(event => ({
         id: event.id, position: position(Date.parse(event.startTime)),
         label: `${event.type === 'breastfeeding' ? 'Грудное кормление' : event.type === 'bottle' ? 'Бутылочка' : 'Прикорм'}: ${timeLabel(Date.parse(event.startTime))}`,

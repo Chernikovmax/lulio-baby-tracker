@@ -2,6 +2,9 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { disabled, form, FormField, required } from '@angular/forms/signals';
 import { IonButton, IonContent, IonHeader, IonTitle, IonToolbar } from '@ionic/angular';
+import { Capacitor } from '@capacitor/core';
+import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import type { BabyProfile } from '../../core/models/tracker.models';
 import { isIsoDate, isTrackerBackup } from '../../core/models/tracker.models';
 import { StorageService } from '../../core/services/storage.service';
@@ -120,9 +123,20 @@ export class SettingsPage {
     this.backupError.set(''); this.backupMessage.set(''); this.exportBusy.set(true);
     try {
       const json = await this.storage.exportBackup();
+      const name = `baby-tracker-backup-${today()}.json`;
+      if (Capacitor.isNativePlatform()) {
+        const { uri } = await Filesystem.writeFile({ path: name, data: json, directory: Directory.Cache, encoding: Encoding.UTF8 });
+        try {
+          await Share.share({ title: 'Резервная копия дневника', files: [uri] });
+          this.backupMessage.set('Резервная копия передана в выбранное приложение.');
+        } catch (error) {
+          if (!(error instanceof Error && error.message === 'Share canceled')) throw error;
+        }
+        return;
+      }
       const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
       const link = document.createElement('a');
-      link.href = url; link.download = `baby-tracker-backup-${today()}.json`; link.click();
+      link.href = url; link.download = name; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 0);
       this.backupMessage.set('Резервная копия сохранена.');
     } catch {

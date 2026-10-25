@@ -72,6 +72,18 @@ describe('Редактирование времени сохранённых з�
     expect(restored.events()).toEqual([expected]);
   });
 
+  it('сохраняет дробные минуты кормления, округляя до секунд, без ошибки валидации', async () => {
+    const feeding: BreastfeedingEvent = { id: 'feeding', type: 'breastfeeding',
+      startTime: '2026-10-23T10:00:00.000Z', endTime: '2026-10-23T11:00:00.000Z',
+      leftDurationSec: 3000, rightDurationSec: 600, lastSide: 'right', updatedAt: '2026-10-23T11:00:00.000Z' };
+    const { storage, modal } = await setup(feeding);
+    modal.timeModel.update(value => ({ ...value, leftMinutes: 17.09, rightMinutes: 12.34 }));
+    await modal.save();
+    expect(modal.error()).toBe('');
+    expect(storage.events()).toEqual([{ ...feeding, leftDurationSec: 1025, rightDurationSec: 740,
+      endTime: '2026-10-23T10:29:25.000Z', updatedAt: '2026-10-23T12:00:00.000Z' }]);
+  });
+
   it.each([[0, 0], [-1, 5], [5, -1], [NaN, 5], [121, 0]])(
     'не меняет кормление при недопустимой длительности %s / %s', async (leftMinutes, rightMinutes) => {
       const feeding: BreastfeedingEvent = { id: 'feeding', type: 'breastfeeding',

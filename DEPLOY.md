@@ -51,6 +51,28 @@ adb install -r lulio-baby-tracker-v<VERSION>.apk
 
 Replace `<VERSION>` with the numeric version. Compare the public signer certificate fingerprint with the trusted previous release; checksum agreement alone does not establish publisher identity. Confirm package ID, version name/code using SDK APK inspection tools. On a real device, verify launch, diary entry/timer persistence after restart, and, where a previous signed release is available, an in-place update retaining data. Never uninstall or clear storage to disguise a failed update. Record unavailable device/update checks as unverified.
 
+### Android 1.3.0 release preparation (2026-10-24)
+
+- Requested baseline: `b0161b6055fa6cca03c91a3a6db8ea1e5abdd513`. Its model declarations prevented TypeScript, production build, and test compilation. The owner explicitly authorized a minimal repair before publication.
+- Repair scope: restore top-level sleep pause declarations/helpers and attach pause fields to sleep events/timers rather than breastfeeding models. No sleep-routine settings, unrelated main changes, application identity, signing identity, or generated Android files are included.
+- Isolated physical checkout: `/Users/chernikovmax/orca/workspaces/lulio-android-v1.1.1`. Node 22.23.2; sequential `npm ci`, `npx tsc --noEmit`, `npm run build`, and `npx ng test --watch=false` passed after the repair.
+- Runtime smoke passed for paused-sleep JSON roundtrip, active timer validation, pause-excluded duration, and rejection of pauses outside event/timer bounds. Physical-device installation, launch, update, and diary/timer retention are unverified; `adb devices -l` found no connected devices.
+- Release version metadata is 1.3.0; expected Android versionCode is 1003000. Publication and downloaded signed-APK verification must be recorded separately after CI succeeds.
+
+### Android 1.3.0 publication receipt (2026-10-24)
+
+- **Release:** https://github.com/Chernikovmax/lulio-baby-tracker/releases/tag/v1.3.0 — published at **12:25:27Z**, not draft or prerelease, verified as latest.
+- **Source/tag:** `v1.3.0` resolves remotely to **`a395f642859f11eba45cebc0f43fb6ce6b2e45e7`**. The baseline is followed only by approved model repair `a81fc8d` and the version/preparation commit. Branch `release/android-v1.3.0` and the new tag were pushed without changing `main` or existing tags. GitHub's `targetCommitish: main` metadata is not the resolved tag identity.
+- **CI:** https://github.com/Chernikovmax/lulio-baby-tracker/actions/runs/40093626471 — exact source SHA, both **build** and **release** succeeded, including signing/publication. Local mandatory checks passed **91 tests in 17 files**. Action-runtime/setup-java deprecation notices did not fail the run.
+- **Actual downloaded attachments:** `lulio-baby-tracker-v1.3.0.apk` (**3,837,271 bytes**) and `SHA256SUMS`, retained under `dist/android-release-verification/v1.3.0/`. `shasum -a 256 -c SHA256SUMS` passed. Independently computed APK SHA-256: **`f28d6df69d32007d9d197ab33e339c98b05b87fdbb07c5f10b3743cde69ceb3d`**. This is the signed Release attachment, not the unsigned CI artifact.
+- **SDK inspection:** build-tools **35.0.0** `apksigner verify --verbose --print-certs` passed (one signer, v2/v3 signatures); `zipalign -c -p 4` passed. `aapt dump badging` confirmed **io.ionic.starter**, versionName **1.3.0**, versionCode **1003000**, min SDK **24**, target SDK **36**.
+- **Signing continuity:** downloaded prior **v1.2.0**, verified its published checksum and APK signature, and compared public signer certificate SHA-256. Both releases use **`caf549bd5fdb2248856e820b70efbda2c895890328eee189fa512df35156ee13`**. Prior versionCode **1002000** is lower. No private signing material was read or replaced.
+- **PWA coordination:** immediately after pushing the release tag, exact SHA/tag and permission to deploy that revision were sent to sole existing PWA owner terminal `term_f6142e0c-ee46-452e-ae27-339428bc6100`; Orca accepted the message. PWA publication itself belongs to that owner, not this Android receipt.
+- **Unverified:** no connected Android device; physical install, launch, in-place update preserving diary data, and timer persistence after restart were not exercised. Matching application ID/signature and increasing versionCode do not substitute for device acceptance.
+- This subsequent documentation receipt does not move the immutable release tag or alter its APK source.
+
+
+
 ## PWA → Yandex Object Storage
 
 ### Current local configuration and required hosting decisions
