@@ -24,7 +24,7 @@ Source of truth: [workflow](.github/workflows/android-release.yml), [version scr
 
 1. Agree the version and commit with the maintainer, update version metadata, complete checks, and merge the intended revision. Confirm the tag target contains exactly those changes.
 2. With explicit approval, create and push the exact `v<version>` tag to the intended repository. A push to `main`, PR targeting `main`, or manual dispatch also builds, but a normal branch run does **not** publish a Release. The release job is gated by a `refs/tags/v` ref; a manual run must also target the exact matching tag to qualify.
-3. Inspect the **Android APK** Actions run for that tag and commit. CI uses Node 22.23.2, Java 21, Android platform 36/build-tools 36.0.0; it validates version/tag agreement, runs `npm ci`, TypeScript checks, production build, unit tests, and `npx cap sync android`, then runs:
+3. Inspect the **Android APK** Actions run for that tag and commit. CI uses the explicit **ubuntu-24.04** runner label, Node **22.23.2**, Temurin Java **21**, Android platform **36**/build-tools **36.0.0**; it validates version/tag agreement, runs `npm ci`, TypeScript checks, production build, unit tests, and `npx cap sync android`, then runs:
 
    ```sh
    # From android/; normally executed by CI, not a publication command.
@@ -50,6 +50,64 @@ adb install -r lulio-baby-tracker-v<VERSION>.apk
 ```
 
 Replace `<VERSION>` with the numeric version. Compare the public signer certificate fingerprint with the trusted previous release; checksum agreement alone does not establish publisher identity. Confirm package ID, version name/code using SDK APK inspection tools. On a real device, verify launch, diary entry/timer persistence after restart, and, where a previous signed release is available, an in-place update retaining data. Never uninstall or clear storage to disguise a failed update. Record unavailable device/update checks as unverified.
+
+### Release workflow optimizations and local preflight
+
+The optimization workflow does not change application version, application ID, signing identity, or the immutable v1.4.0 release. Only the tag-gated CI release job may sign or publish. Never dispatch a published tag merely to benchmark caching: that would rerun publication with `--clobber`.
+
+#### CI gates and cache trust
+
+- The workflow still runs on every PR targeting `main`, every push to `main`, every `v*` tag push, and manual dispatch. There are **no workflow-level `paths` filters**. The existing required job/check **`build`** always runs checkout and the changed-file gate, and reports success for proven docs-only changes. Do not replace it with an optionally created check. A gate test failure fails the job, not a successful skip.
+- The only documentation allowlist is root `README.md`, root `DEPLOY.md`, and `docs/` Markdown paths whose directory/file basenames contain only ASCII letters, digits, `_` or `-`. This does not include `.github/`, scripts, generated assets, arbitrary root Markdown, or unknown extensions. Unknown or mixed changes build.
+- PRs compare the merge-base of the event's base/head SHAs to the complete head. Pushes compare the event's exact before/after trees (including multi-commit and force pushes). Full checkout history is available. NUL-delimited Git output and disabled rename detection make both sides of a rename, and deleted paths, participate in the decision. A code-to-doc rename must build. Missing objects/payloads, zero SHAs, empty diffs and unknown events conservatively build.
+- **Every tag and every manual dispatch takes the full gate**, even if the tree differs only in documentation. Tags still require exact `v<package.json.version>` agreement; tests and APK build cannot be replaced by a branch artifact. Docs-only runs do not upload an APK and never publish a release.
+- `gradle/actions/setup-gradle` uses the open-source **basic** cache provider, not a third-party enhanced cache service. It caches only `caches/` and `wrapper/` beneath the build job's fresh `$RUNNER_TEMP/gradle-user-home`. It does not cache the repository, `gradle.properties`, credentials, signing material, or the signing job. No configuration-cache encryption key, build-scan publication or dependency submission is configured. Do not add a second Gradle cache in setup-java or actions/cache.
+- PRs (including same-repo PRs) and arbitrary dispatch branches are cache **read-only**. Trusted `main` and `v*` runs may write. GitHub's cache ref isolation still applies: tag-local writes do not warm `main`. Only a trusted `main` build can populate the shared default-branch cache; until then a PR can legitimately be cold. Never weaken trust just to produce warm measurements.
+- Basic cache keys hash Gradle build/configuration files; no exact hit means a cold cache. Generated Capacitor files can affect the next key, and cached dependencies do not eliminate compilation. Inspect setup-gradle restore/save logs and the `Build release APK` step duration; compare equivalent runner/source/toolchain conditions before claiming a gain.
+- Actions are pinned to supported concrete releases: checkout **7.0.1**, setup-node **7.1.0**, setup-java **6.1.0**, upload-artifact **7.0.2**, download-artifact **8.0.2**, setup-android **4.0.4**, setup-gradle **6.4.0**. Their Node 24 action runtime is separate from application Node 22.23.2. `ubuntu-24.04` avoids the announced `ubuntu-latest` → 26.04 migration, but GitHub still patches that image; it is not an immutable VM digest.
+- Compatibility sources reviewed: [checkout](https://github.com/actions/checkout), [setup-node](https://github.com/actions/setup-node), [setup-java](https://github.com/actions/setup-java), [artifact upload](https://github.com/actions/upload-artifact), [artifact download](https://github.com/actions/download-artifact), [Android setup](https://github.com/android-actions/setup-android), [Gradle cache provider/trust](https://github.com/gradle/actions/blob/main/docs/setup-gradle.md), [Ubuntu 24.04 image](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md), [AGP 8.13 compatibility](https://developer.android.com/build/releases/agp-8-13-0-release-notes), [Gradle 8.14.3 Java matrix](https://docs.gradle.org/8.14.3/userguide/compatibility.html). Existing Gradle **8.14.3**, AGP **8.13.0** and Java **21** are retained; AGP requires Gradle ≥8.13/JDK ≥17 and Gradle supports running on Java 21.
+
+#### Reproducible local commands
+
+Use the **existing isolated linked Android worktree**, not the shared dirty `petprojects` checkout and not the PWA owner's checkout. Commit intended source changes first. Do not reset/stash/switch another owner's work. The script refuses a primary checkout, a dirty worktree (including untracked files), a different source SHA, mismatching package/lockfile versions, invalid Android versionCode bounds, or unsupported Node. It requires Node `^22.22.3 || ^24.15.0 || >=26.0.0`; **22.23.2** matches CI.
+
+```sh
+# Run from /Users/chernikovmax/orca/workspaces/lulio-android-v1.1.1.
+# Inspect status and agree the full source SHA before invoking preflight.
+git status --short --branch
+git rev-parse HEAD
+node scripts/android-preflight.mjs --sha <AGREED_40_CHARACTER_SOURCE_SHA> --version 1.4.0
+```
+
+Use the agreed package version for a future release, not an automatic version bump. Preflight validates source/version/isolation **before any install/build**. It then runs sequentially, stopping at the first failure:
+
+1. `npm ci`
+2. `npx tsc --noEmit`
+3. `npm run build`
+4. `npx ng test --watch=false`
+5. `node scripts/android-smoke.mjs`
+
+It rechecks source cleanliness/SHA/version after each command and prints observed per-command timings. `npm ci` replaces only this worktree's `node_modules`; build changes ignored `www/` output. The script does not create a worktree, change refs, stage, commit, sync Capacitor, build/sign an APK, access secrets, or publish anything. A failed check requires investigation, not bypassing assertions.
+
+The browser runner can also be run independently after a fresh production build:
+
+```sh
+node scripts/android-smoke.mjs
+# Exercise the actual classifier against disposable Git histories:
+node --test scripts/android-build-needed.test.mjs
+```
+
+Browser requirements: approved network access to npm and Playwright's browser download CDN, writable OS temporary directory, and Chromium headless system libraries. On Linux, provision supported Playwright Chromium OS dependencies on the runner before use; this script never runs sudo or installs system packages. The runner installs tool-only **playwright@1.64.1** into a fresh temporary directory, invokes that exact package's `install chromium --only-shell`, and uses the matching browser through Playwright's supported discovery. There is no hardcoded browser-cache revision, system-browser fallback, app dependency upgrade, or connection to the occupied MCP/user browser. A missing download/library/executable fails visibly; do not suppress it or reuse a different cached revision. See [Playwright browser installation](https://playwright.dev/docs/browsers) and [isolated browser contexts](https://playwright.dev/docs/browser-contexts).
+
+For a separately approved Linux machine/CI image preparation, the matching official dependency command is `npm exec --yes --package=playwright@1.64.1 -- playwright install-deps chromium`. It can invoke sudo and install OS packages; run it only with the machine owner's permission, not as part of release preflight. macOS does not need this Linux package step.
+
+The smoke serves only local production `www/` on an ephemeral loopback port and launches its own Chromium process/nonpersistent context at 390 × 844. Service workers are blocked to test the freshly built bundle deterministically; external requests are blocked and any attempt fails acceptance. Only synthetic browser-local data is created. It checks distinct rendered Terracotta/Muted Sage colors, selected controls and reload persistence for both, a failed theme-storage write retaining the selected/stored palette after reload, unknown-theme default fallback, and sleep start/pause/frozen elapsed/paused reload/finish with durable diary event timestamps. The temporary tool/browser files, context/process and server are cleaned on success, failure and SIGINT/SIGTERM (SIGKILL or machine loss cannot execute cleanup). No user browser profile or real storage is opened.
+
+Limits: preflight is not an Android native build/signature/install/update test, physical-device lifecycle/data-retention acceptance, or PWA publication/service-worker lifecycle acceptance. The independent smoke command requires a fresh bundle; only the complete preflight ties a freshly rebuilt bundle to the validated source SHA. Do not infer signed-release acceptance from a branch CI APK.
+
+#### Timing baseline
+
+Published v1.4.0 CI [40173809891](https://github.com/Chernikovmax/lulio-baby-tracker/actions/runs/40173809891) reported build job **3m9s**, Gradle assembleRelease **130s**, tests **17s**, npm ci **9s**, web build **7s**, signing/verification **1s**, publication **4s**, release job **24s**. This is historical evidence, not a controlled cold/warm comparison for the new cache. Record new unsigned PR/branch run URLs, cache hit/miss state and actual durations separately; no speedup is promised without comparable observations.
 
 ### Android 1.4.0 release preparation (2026-10-25)
 
