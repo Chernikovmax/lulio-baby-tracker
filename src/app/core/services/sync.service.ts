@@ -1,6 +1,6 @@
 import { DestroyRef, Service, computed, effect, inject, resource, signal, untracked } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
-import { createClient, RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
+import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
 import { SyncConfig, isSyncConfig, isSyncResponse } from '../models/sync.models';
 import { YANDEX_CONFIG_KEY } from '../models/yandex-sync.models';
@@ -148,6 +148,7 @@ export class SyncService {
       if (generation !== this.generation) return;
       const scope = `${resolved.url}/${resolved.familyId}`;
       await this.storage.configureSupabaseSync(scope);
+      const { createClient } = await import('@supabase/supabase-js');
       if (generation !== this.generation) return;
       client = createClient(resolved.url, resolved.anonKey, {
         auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
