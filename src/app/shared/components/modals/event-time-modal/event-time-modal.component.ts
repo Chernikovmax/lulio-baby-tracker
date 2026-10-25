@@ -61,12 +61,12 @@ export class EventTimeModalComponent {
     if (!event || this.pending()) return;
     const value = this.timeModel();
     const start = new Date(value.startTime).getTime();
-    const left = Math.round(Number(value.leftMinutes) * 60_000) / 1000;
-    const right = Math.round(Number(value.rightMinutes) * 60_000) / 1000;
+    const left = Math.round(Number(value.leftMinutes) * 60);
+    const right = Math.round(Number(value.rightMinutes) * 60);
     if (event.type === 'breastfeeding' && (!Number.isFinite(left) || !Number.isFinite(right) || left < 0 || right < 0 || left + right <= 0)) {
       this.error.set('Укажите неотрицательное время у каждой груди; сумма должна быть больше нуля.'); return;
     }
-    const end = event.type === 'breastfeeding' ? start + Math.round((left + right) * 1000) : event.endTime ? new Date(value.endTime).getTime() : null;
+    const end = event.type === 'breastfeeding' ? start + (left + right) * 1000 : event.endTime ? new Date(value.endTime).getTime() : null;
     if (!Number.isFinite(start) || (end !== null && !Number.isFinite(end))) {
       this.error.set('Укажите корректные дату и время.'); return;
     }
