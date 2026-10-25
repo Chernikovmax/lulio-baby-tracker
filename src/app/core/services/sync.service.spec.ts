@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageService } from './storage.service';
 import { SyncService } from './sync.service';
 import type { SyncEntry, SyncResponse } from '../models/sync.models';
+// Resolve the lazy client mock before fake-timer settling; module loading uses real I/O.
+import '@supabase/supabase-js';
 
 let client: unknown;
 let created = 0;

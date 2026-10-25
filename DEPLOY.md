@@ -51,6 +51,16 @@ adb install -r lulio-baby-tracker-v<VERSION>.apk
 
 Replace `<VERSION>` with the numeric version. Compare the public signer certificate fingerprint with the trusted previous release; checksum agreement alone does not establish publisher identity. Confirm package ID, version name/code using SDK APK inspection tools. On a real device, verify launch, diary entry/timer persistence after restart, and, where a previous signed release is available, an in-place update retaining data. Never uninstall or clear storage to disguise a failed update. Record unavailable device/update checks as unverified.
 
+### Android 1.4.0 release preparation (2026-10-25)
+
+- Pinned feature source: `4945ceb83f9d188d11bdf3bc2b7eca75b8bf360c`, merged night-theme PR #2. Release changes are package/lockfile version metadata, this documentation, and the separately owner-approved minimal test setup repair below. No later application commits, generated Android changes, application-ID changes, signing changes, or PWA deployment are included.
+- Version: **1.4.0**; calculated Android versionCode: **1004000**. Features: device-local **Terracotta** and **Muted Sage** selection in Profile; theme preference is not shared with family or included in diary backups.
+- Isolated physical checkout: `/Users/chernikovmax/orca/workspaces/lulio-android-v1.1.1`, initially clean. The dirty shared `petprojects` checkout was not switched, built, staged, or committed.
+- Release-gate repair, explicitly approved during preparation: `sync.service.spec.ts` now statically loads its mocked lazy Supabase module before fake-timer settling. The full suite initially failed twice because two tests inspected connection results before module loading completed; the same file passed alone. No assertions were removed or weakened, no production code changed. After the setup repair, sequential `npm ci`, `npx tsc --noEmit`, `npm run build`, and `npx ng test --watch=false` passed on Node **22.23.2**: **103 tests in 19 files**.
+- Local mobile Chromium production-bundle smoke (390 × 844): both palettes applied with distinct primary colors; Terracotta persisted across navigation/reload; sleep timer start, pause and finish worked under Muted Sage; four primary dock controls measured **72px** at y=707, in the bottom third. A synthetic theme-storage write failure retained the previous selected/stored palette and displayed the error; an unsupported stored theme fell back to default. No browser page errors were observed. This is browser smoke, not native-device acceptance.
+- Freshly downloaded trusted v1.3.0 attachments passed checksum/signature verification; package **io.ionic.starter**, versionCode **1003000**, public signer SHA-256 **`caf549bd5fdb2248856e820b70efbda2c895890328eee189fa512df35156ee13`**.
+- `adb devices -l` found no connected devices. Physical install, native launch, update from v1.3.0, and diary/timer data retention remain unverified. Signed publication and downloaded v1.4.0 verification are recorded separately after CI succeeds.
+
 ### Android 1.3.0 release preparation (2026-10-24)
 
 - Requested baseline: `b0161b6055fa6cca03c91a3a6db8ea1e5abdd513`. Its model declarations prevented TypeScript, production build, and test compilation. The owner explicitly authorized a minimal repair before publication.
