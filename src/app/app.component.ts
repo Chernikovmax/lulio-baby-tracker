@@ -3,6 +3,7 @@ import { IonApp, IonRouterOutlet } from '@ionic/angular';
 import { YandexSyncService } from './core/services/yandex-sync.service';
 import { TimerNotificationService } from './core/services/timer-notification.service';
 import { PwaService } from './core/services/pwa.service';
+import { ThemeService } from './core/services/theme.service';
 
 @Component({
   selector: 'app-root',
@@ -13,4 +14,5 @@ export class AppComponent {
   readonly pwa = inject(PwaService);
   private readonly yandex = inject(YandexSyncService);
   private readonly timerNotifications = inject(TimerNotificationService);
+  private readonly theme = inject(ThemeService);
 }

@@ -80,3 +80,120 @@ ion-modal {
   background: var(--ion-color-primary);
   color: var(--ion-color-primary-contrast);
 }
+
+/* Scope device themes on the root so Ionic overlays inherit the same palette. */
+html.ion-palette-dark[data-theme='terracotta'] {
+  --ion-text-color: #e0d5c8;
+  --ion-text-color-rgb: 224, 213, 200;
+  --ion-color-primary: #e07a5f;
+  --ion-color-primary-rgb: 224, 122, 95;
+  --ion-color-primary-contrast: #0e0705;
+  --ion-color-primary-contrast-rgb: 14, 7, 5;
+  --ion-color-primary-shade: #b5573e;
+  --ion-color-primary-tint: #f29c85;
+  --app-surface: #0a0807;
+  --app-card: #171311;
+  --app-muted-rgb: 156, 141, 128;
+  --app-muted: #9c8d80;
+  --app-border: #594d44;
+  --app-action-background: rgba(224, 122, 95, .16);
+  --app-action-activated: rgba(224, 122, 95, .24);
+  --app-action-color: #f29c85;
+  --app-action-border: #b5573e;
+  --app-outline-border: #4d2b22;
+  --app-control-background: #171311;
+  --app-control-activated: #2d2420;
+  --app-control-color: #c7b8ac;
+}
+
+html.ion-palette-dark[data-theme='muted-sage'] {
+  --ion-text-color: #cad2c5;
+  --ion-text-color-rgb: 202, 210, 197;
+  --ion-color-primary: #52796f;
+  --ion-color-primary-rgb: 82, 121, 111;
+  --ion-color-primary-contrast: #060a09;
+  --ion-color-primary-contrast-rgb: 6, 10, 9;
+  --ion-color-primary-shade: #3f6158;
+  --ion-color-primary-tint: #84a98c;
+  --app-surface: #070a09;
+  --app-card: #111614;
+  --app-muted-rgb: 126, 140, 132;
+  --app-muted: #7e8c84;
+  --app-border: #46524c;
+  --app-action-background: rgba(82, 121, 111, .18);
+  --app-action-activated: rgba(82, 121, 111, .24);
+  --app-action-color: #84a98c;
+  --app-action-border: #3f6158;
+  --app-outline-border: #253833;
+  --app-control-background: #111614;
+  --app-control-activated: #212b27;
+  --app-control-color: #a3b1a8;
+}
+
+html.ion-palette-dark:is([data-theme='terracotta'], [data-theme='muted-sage']) {
+  --ion-toolbar-background: var(--app-surface);
+  --ion-tab-bar-background: var(--app-surface);
+  --ion-item-background: #000;
+  --ion-card-background: var(--app-card);
+  --ion-card-color: var(--ion-text-color);
+  --ion-color-medium: var(--app-muted);
+  --ion-color-medium-rgb: var(--app-muted-rgb);
+  --ion-color-step-200: var(--app-control-activated);
+  --ion-color-step-400: var(--app-border);
+  --ion-color-step-600: var(--app-muted);
+  --ion-text-color-step-400: var(--app-muted);
+  --ion-text-color-step-600: var(--app-muted);
+  --ion-tab-bar-color: var(--app-muted);
+  --ion-tab-bar-color-selected: var(--app-action-color);
+
+  ion-segment {
+    --background: #000;
+    border-bottom: 1px solid var(--app-control-activated);
+  }
+  ion-segment-button {
+    /* Keep inactive labels legible; the supplied border shades are too dark for text. */
+    --color: var(--app-muted);
+    --color-checked: var(--app-action-color);
+    --indicator-color: var(--ion-color-primary);
+    --indicator-height: 2px;
+    font-weight: 500;
+    letter-spacing: .04em;
+  }
+  ion-button:not([color]):not([fill='clear']) {
+    --background: var(--app-action-background);
+    --background-activated: var(--app-action-activated);
+    --background-hover: var(--app-action-activated);
+    --color: var(--app-action-color);
+    --border-width: 1px;
+    --border-style: solid;
+    --border-color: var(--app-action-border);
+    --border-radius: 8px;
+  }
+  ion-button:not([color])[fill='outline'] {
+    --background: transparent;
+    --border-color: var(--app-outline-border);
+  }
+  ion-button:not([color])[fill='clear'] {
+    --color: var(--app-action-color);
+  }
+  ion-modal .elapsed {
+    color: var(--ion-text-color);
+    font-size: 46px;
+    font-variant-numeric: tabular-nums;
+  }
+  ion-modal .sides ion-button,
+  ion-modal .actions ion-button {
+    min-height: 60px;
+    font-weight: 500;
+    --border-width: 1.5px;
+  }
+  ion-modal .actions ion-button:not([color]):not([fill='clear']),
+  ion-button.sleep-pause:not([color]):not([fill='clear']),
+  ion-button.night-control-btn:not([color]):not([fill='clear']) {
+    --background: var(--app-control-background);
+    --background-activated: var(--app-control-activated);
+    --background-hover: var(--app-control-activated);
+    --color: var(--app-control-color);
+    --border-color: var(--app-control-activated);
+  }
+}

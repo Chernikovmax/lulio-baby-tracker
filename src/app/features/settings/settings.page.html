@@ -2,6 +2,24 @@
 <ion-content>
   <main class="page">
     <h1>Профиль и данные</h1>
+    <section aria-labelledby="theme-title">
+      <h2 id="theme-title">Тема оформления</h2>
+      <p class="hint">Спокойные цвета для ночного использования. Выбор сохраняется только на этом устройстве, не передаётся семье и не входит в резервную копию.</p>
+      <div class="theme-options" role="group" aria-label="Тема оформления" [attr.aria-busy]="theme.loading() || theme.saving()">
+        @for (option of theme.options; track option.id) {
+          <button type="button" class="theme-option" [attr.aria-pressed]="theme.selected() === option.id" [disabled]="theme.loading() || theme.saving() || !!theme.loadError()" (click)="theme.select(option.id)">
+            <strong>{{ option.label }}</strong><span>{{ option.description }}</span>
+          </button>
+        }
+      </div>
+      @if (theme.loading()) { <p role="status">Загружаем тему…</p> }
+      @if (theme.saving()) { <p role="status">Сохраняем тему…</p> }
+      @if (theme.loadError()) {
+        <p class="error" role="alert">Не удалось загрузить тему устройства.</p>
+        <ion-button fill="outline" (click)="theme.retry()">Повторить загрузку темы</ion-button>
+      }
+      @if (theme.error()) { <p class="error" role="alert">{{ theme.error() }}</p> }
+    </section>
     @if (pwa.web) {
       <section aria-labelledby="pwa-title">
         <h2 id="pwa-title">Приложение на iPhone и офлайн</h2>

@@ -1,4 +1,4 @@
-:host { display: flex; flex-direction: column; --tracker-muted: #a8a8b0; }
+:host { display: flex; flex-direction: column; --tracker-muted: var(--app-muted, #a8a8b0); }
 .tracker { max-width: 760px; margin: auto; padding: max(18px, env(safe-area-inset-top)) 16px 24px; }
 .date-switcher, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .date-switcher ion-button { min-width: 44px; min-height: 48px; }
