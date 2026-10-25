@@ -22,7 +22,9 @@ export class StatsPage {
     const now = new Date(this.clock.now());
     return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   });
-  readonly stats = computed(() => calculateStats(this.storage.events(), this.today(), this.period(), this.clock.now()));
+  // Rounded up so a sleep finished seconds ago is already counted.
+  private readonly minute = computed(() => Math.ceil(this.clock.now() / 60_000) * 60_000);
+  readonly stats = computed(() => calculateStats(this.storage.events(), this.today(), this.period(), this.minute()));
   readonly feedingAverage = computed(() => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(this.stats().averageFeedings));
   readonly growthHistory = computed(() => {
     const history = this.storage.events().filter((event): event is GrowthEvent => event.type === 'growth')
