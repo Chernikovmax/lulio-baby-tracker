@@ -13,7 +13,7 @@ const sleep: SleepEvent = {
 const local = (value: string) => {
   const date = new Date(value);
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 23);
+  return date.toISOString().slice(0, 16);
 };
 
 async function setup(event: SleepEvent | BreastfeedingEvent = sleep) {
@@ -43,17 +43,19 @@ describe('Редактирование времени сохранённых з�
   it('исправляет забытый сон через полночь, пересчитывает итоги и восстанавливает ту же запись после перезапуска', async () => {
     const { storage, modal } = await setup();
     const page = TestBed.runInInjectionContext(() => new TrackerPage());
+    expect(modal.timeModel().startTime).toBe(local('2026-10-20T22:00:00Z'));
+    expect(modal.timeModel().endTime).toBe(local('2026-10-21T08:00:00Z'));
     page.selectedDate.set(new Date(2026, 9, 21).getTime());
     modal.timeModel.update(value => ({ ...value, endTime: local('2026-10-21T06:00:12.345Z') }));
     await modal.save();
     expect(modal.error()).toBe('');
     expect(page.eventDuration(storage.events()[0])).toBe(28800);
-    const expectedTotal = Math.floor((Date.parse('2026-10-21T06:00:12.345Z') - Math.max(Date.parse(sleep.startTime), page.selectedDate())) / 1000);
+    const expectedTotal = Math.floor((Date.parse('2026-10-21T06:00:00Z') - Math.max(Date.parse('2026-10-20T22:00:00Z'), page.selectedDate())) / 1000);
     expect(page.summary().nighttime).toBe(expectedTotal);
     TestBed.resetTestingModule();
     const restored = TestBed.inject(StorageService);
     await restored.ready();
-    expect(restored.events()).toEqual([{ ...sleep, endTime: '2026-10-21T06:00:12.345Z', updatedAt: '2026-10-23T12:00:00.000Z' }]);
+    expect(restored.events()).toEqual([{ ...sleep, startTime: '2026-10-20T22:00:00.000Z', endTime: '2026-10-21T06:00:00.000Z', updatedAt: '2026-10-23T12:00:00.000Z' }]);
   });
 
   it('сокращает забытое кормление с часа до времени у каждой груди и восстанавливает исправленную запись', async () => {
@@ -61,10 +63,10 @@ describe('Редактирование времени сохранённых з�
       startTime: '2026-10-23T10:00:00.000Z', endTime: '2026-10-23T11:00:00.000Z',
       leftDurationSec: 3000, rightDurationSec: 600, lastSide: 'right', note: 'Забыли таймер', updatedAt: '2026-10-23T11:00:00.000Z' };
     const { storage, modal } = await setup(feeding);
-    modal.timeModel.update(value => ({ ...value, leftMinutes: 5.5, rightMinutes: 0 }));
+    modal.timeModel.update(value => ({ ...value, leftMinutes: 5, rightMinutes: 0 }));
     await modal.save();
     expect(modal.error()).toBe('');
-    const expected = { ...feeding, leftDurationSec: 330, rightDurationSec: 0, lastSide: 'left', endTime: '2026-10-23T10:05:30.000Z', updatedAt: '2026-10-23T12:00:00.000Z' };
+    const expected = { ...feeding, leftDurationSec: 300, rightDurationSec: 0, lastSide: 'left', endTime: '2026-10-23T10:05:00.000Z', updatedAt: '2026-10-23T12:00:00.000Z' };
     expect(storage.events()).toEqual([expected]);
     TestBed.resetTestingModule();
     const restored = TestBed.inject(StorageService);
@@ -72,19 +74,20 @@ describe('Редактирование времени сохранённых з�
     expect(restored.events()).toEqual([expected]);
   });
 
-  it('сохраняет дробные минуты кормления, округляя до секунд, без ошибки валидации', async () => {
+  it('округляет длительности до целых минут при открытии и сохранении кормления', async () => {
     const feeding: BreastfeedingEvent = { id: 'feeding', type: 'breastfeeding',
       startTime: '2026-10-23T10:00:00.000Z', endTime: '2026-10-23T11:00:00.000Z',
-      leftDurationSec: 3000, rightDurationSec: 600, lastSide: 'right', updatedAt: '2026-10-23T11:00:00.000Z' };
+      leftDurationSec: 1050, rightDurationSec: 740, lastSide: 'right', updatedAt: '2026-10-23T11:00:00.000Z' };
     const { storage, modal } = await setup(feeding);
-    modal.timeModel.update(value => ({ ...value, leftMinutes: 17.09, rightMinutes: 12.34 }));
+    expect(modal.timeModel()).toMatchObject({ leftMinutes: 18, rightMinutes: 12 });
+    modal.timeModel.update(value => ({ ...value, leftMinutes: 17.5, rightMinutes: 12.49 }));
     await modal.save();
     expect(modal.error()).toBe('');
-    expect(storage.events()).toEqual([{ ...feeding, leftDurationSec: 1025, rightDurationSec: 740,
-      endTime: '2026-10-23T10:29:25.000Z', updatedAt: '2026-10-23T12:00:00.000Z' }]);
+    expect(storage.events()).toEqual([{ ...feeding, leftDurationSec: 1080, rightDurationSec: 720,
+      endTime: '2026-10-23T10:30:00.000Z', updatedAt: '2026-10-23T12:00:00.000Z' }]);
   });
 
-  it.each([[0, 0], [-1, 5], [5, -1], [NaN, 5], [121, 0]])(
+  it.each([[0, 0], [0.49, 0.49], [-1, 5], [5, -1], [-0.1, 5], [5, -0.1], [NaN, 5], [121, 0]])(
     'не меняет кормление при недопустимой длительности %s / %s', async (leftMinutes, rightMinutes) => {
       const feeding: BreastfeedingEvent = { id: 'feeding', type: 'breastfeeding',
         startTime: '2026-10-23T10:00:00.000Z', endTime: '2026-10-23T11:00:00.000Z',
@@ -105,12 +108,6 @@ describe('Редактирование времени сохранённых з�
     expect(modal.error()).toBe('');
     expect(storage.events()[0]).toMatchObject({ endTime: '2026-10-21T03:30:00.000Z',
       pauses: [{ startTime: '2026-10-21T03:00:00.000Z', endTime: '2026-10-21T03:30:00.000Z' }] });
-  });
-
-  it('не округляет секунды и миллисекунды при сохранении без правок', async () => {
-    const { storage, modal } = await setup();
-    await modal.save();
-    expect(storage.events()).toEqual([{ ...sleep, updatedAt: '2026-10-23T12:00:00.000Z' }]);
   });
 
   it.each(['', '2026-10-20T22:00:12.345Z', '2026-10-20T21:00:00Z', '2026-10-24T12:00:00Z'])(

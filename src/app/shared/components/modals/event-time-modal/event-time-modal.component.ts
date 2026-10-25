@@ -8,7 +8,7 @@ import { RussianSheetDirective } from '../russian-sheet.directive';
 function localTimestamp(value: string): string {
   const date = new Date(value);
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 23);
+  return date.toISOString().slice(0, 16);
 }
 
 @Component({
@@ -20,14 +20,14 @@ function localTimestamp(value: string): string {
         <ion-header><ion-toolbar><ion-title>Редактировать время</ion-title><ion-button slot="end" fill="clear" [disabled]="pending()" (click)="closed.emit()">Закрыть</ion-button></ion-toolbar></ion-header>
         <ion-content class="sheet-content">
           <form class="panel" (submit)="$event.preventDefault(); save()">
-            <label>{{ event()?.endTime ? 'Начало' : 'Время события' }}<input type="datetime-local" step="0.001" [formField]="timeForm.startTime" [readOnly]="pending()"></label>
+            <label>{{ event()?.endTime ? 'Начало' : 'Время события' }}<input type="datetime-local" step="60" [formField]="timeForm.startTime" [readOnly]="pending()"></label>
             @if (event()?.endTime && event()?.type !== 'breastfeeding') {
-              <label>Окончание<input type="datetime-local" step="0.001" [formField]="timeForm.endTime" [readOnly]="pending()"></label>
+              <label>Окончание<input type="datetime-local" step="60" [formField]="timeForm.endTime" [readOnly]="pending()"></label>
             }
             @if (event()?.type === 'breastfeeding') {
-              <label>Левая грудь, минут<input type="number" step="any" [formField]="timeForm.leftMinutes" [readOnly]="pending()"></label>
-              <label>Правая грудь, минут<input type="number" step="any" [formField]="timeForm.rightMinutes" [readOnly]="pending()"></label>
-              <p>Можно указать дробные минуты. Окончание рассчитывается автоматически: начало плюс время у обеих грудей, без пауз.</p>
+              <label>Левая грудь, минут<input type="number" step="1" [formField]="timeForm.leftMinutes" [readOnly]="pending()"></label>
+              <label>Правая грудь, минут<input type="number" step="1" [formField]="timeForm.rightMinutes" [readOnly]="pending()"></label>
+              <p>Длительности округляются до целых минут. Окончание рассчитывается автоматически: начало плюс время у обеих грудей, без пауз.</p>
             }
             @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
             <ion-button type="button" expand="block" [disabled]="pending()" (click)="save()">{{ pending() ? 'Сохраняем…' : 'Сохранить изменения' }}</ion-button>
@@ -50,8 +50,8 @@ export class EventTimeModalComponent {
     const event = this.event();
     this.timeForm().reset({
       startTime: event ? localTimestamp(event.startTime) : '', endTime: event?.endTime ? localTimestamp(event.endTime) : '',
-      leftMinutes: event?.type === 'breastfeeding' ? event.leftDurationSec / 60 : 0,
-      rightMinutes: event?.type === 'breastfeeding' ? event.rightDurationSec / 60 : 0,
+      leftMinutes: event?.type === 'breastfeeding' ? Math.round(event.leftDurationSec / 60) : 0,
+      rightMinutes: event?.type === 'breastfeeding' ? Math.round(event.rightDurationSec / 60) : 0,
     });
     this.error.set('');
   }
@@ -61,9 +61,9 @@ export class EventTimeModalComponent {
     if (!event || this.pending()) return;
     const value = this.timeModel();
     const start = new Date(value.startTime).getTime();
-    const left = Math.round(Number(value.leftMinutes) * 60);
-    const right = Math.round(Number(value.rightMinutes) * 60);
-    if (event.type === 'breastfeeding' && (!Number.isFinite(left) || !Number.isFinite(right) || left < 0 || right < 0 || left + right <= 0)) {
+    const left = Math.round(Number(value.leftMinutes)) * 60;
+    const right = Math.round(Number(value.rightMinutes)) * 60;
+    if (event.type === 'breastfeeding' && (!Number.isFinite(left) || !Number.isFinite(right) || Number(value.leftMinutes) < 0 || Number(value.rightMinutes) < 0 || left + right <= 0)) {
       this.error.set('Укажите неотрицательное время у каждой груди; сумма должна быть больше нуля.'); return;
     }
     const end = event.type === 'breastfeeding' ? start + (left + right) * 1000 : event.endTime ? new Date(value.endTime).getTime() : null;
