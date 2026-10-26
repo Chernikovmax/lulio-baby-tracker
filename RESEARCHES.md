@@ -2,7 +2,7 @@
 
 Исследование оригинала: 22 октября 2026 года. Проектирование: 23 октября 2026 года.
 
-Статус: этапы 0–1 приняты координатором для локальной разработки; реализация и доказательства этапа 2 записаны ниже, его принятие и запуск следующей сессии остаются за координатором. Согласованные платформы уведомлений: **Android APK + iPhone PWA**. Поэтапный план раздела 10 утверждён 23 октября 2026 года. Числовые параметры — немедицинские инженерные гипотезы, не доказанная точность или доставка уведомлений.
+Статус: этапы **0–3 приняты и отправлены `a417ce0`**; локальная Android-реализация этапа 4 со сборкой и native-тестами отправлена `4819891`, физическая приёмка остаётся открытой. Этап 5 локально реализован и проверен по явно разрешённому исключению ниже; облачное развёртывание и физическая доставка не приняты. Согласованные платформы: **Android APK + iPhone PWA**. Числовые параметры — немедицинские инженерные гипотезы, не доказанная точность или гарантия доставки.
 
 ## 1. Цель и метод
 
@@ -1042,9 +1042,107 @@ Stock Local Notifications components remain in the merged APK because the existi
 
 **Зависимости:** этап 4 и выбранная на этапе 0 инфраструктура.
 
+**Уточнение порядка, явно утверждённое пользователем 25 октября 2026 года:** этап 5 разрешено разрабатывать и проверять **локально**, не дожидаясь физической приёмки этапа 4. Локальная Android-реализация уже проверена сборкой и тестами и отправлена коммитом `4819891`; этапы 0–3 отправлены коммитом `a417ce0`. Это исключение из исходной последовательности только для локальной разработки, а не принятие доставки на Android или iPhone. Облачные ресурсы, IAM, реальная регистрация устройств, расходы и публикация по-прежнему требуют отдельных разрешений. Физические проверки этапов 4–6 и условия облачного запуска не отменены.
+
+
 **Задачи:** явное согласие, регистрация и отзыв push-подписки; защищённая серверная очередь с минимальными данными, условным обновлением версии, идемпотентностью и сроком актуальности. Проверка актуальности перед отправкой, ограниченные по времени повторы ошибок. Интеграция Web Push с существующим service worker без потери офлайн-работы и обновлений. Отдельные состояния ожидания сети и принятого сервером плана.
 
 **Приёмка:** на физическом iPhone проверены установленная PWA, разрешение по действию пользователя, закрытое приложение, фокус, офлайн, задержанный push, отмена, истечение срока актуальности, отзыв подписки и открытие актуальной карточки. Проверены изоляция семей, отклонение чужого получателя и устаревшей версии. Ограничение отмены при отсутствии сети описано явно; постановка в очередь не называется подтверждённой доставкой.
+
+#### Stage 5 local implementation and handoff record — 25–26 October 2026
+
+**Outcome: reachable local implementation is complete; full stage 5 is NOT accepted or deployed.** The explicit exception above permits this local work before physical stage-4 acceptance. No cloud resource/IAM/billing mutation, production publication, real subscription/APNs call, credential-file read, Git mutation or stage-6 session was performed. The current parent owns review/commit/push; the fresh-master handoff below owns subsequent main integration.
+
+##### 5.1. Delivered contracts and exact files
+
+The real backend uses one configured opaque family aggregate in separately private Object Storage, conditional creation/current-ETag replacement, runtime IAM and a minute dispatcher. It does not introduce YDB, Message Queue, Lockbox, diary hosting, multi-tenant administration or a general push relay. Public API authentication is a random installation credential with a hashed server verifier. Initial owner bootstrap/recovery is implemented through a distinct IAM-private operator function; owner pairing is hashed/expiring/one-use and has actual Settings controls. Recovery revokes previous devices before issuing a new owner invitation; there is no public UUID claim, bundled password or fake recovery success.
+
+Device revisions/request receipts, strict body/origin/recipient/endpoint checks, revocation, bounded policy limits, leases/fencing, durable send authorization and explicit `unknown` outcomes are implemented. Only definitely rejected 429/5xx requests can retry, at sixty-second spacing, at most three attempts and before expiry. An unknown submission is not automatically retried. This can miss a reminder and is still an owner-approved policy gate before cloud launch, not a claim of exactly-once external delivery.
+
+The PWA keeps existing Angular registration/SwPush and generic visible notification payload/current-card navigation. Its separate local ledger records consent and cancellation/revocation debt before diary commits, outside backup/sync. The existing write queue serializes fresh snapshot capture with network reconciliation; a consent epoch prevents a late in-flight reconciliation or permission result from overwriting a newer opt-out. Every changed diary commit publishes the existing reminder-generation signal. On reconnect the client cancels at the freshly read server revision before computing a new intent, not by replaying a stale local queue. Offline changes remain unable to retract an already authorized push.
+
+| Area | Exact files changed/added |
+| --- | --- |
+| Backend package/runtime | `server/reminders/package.json`, `server/reminders/package-lock.json`, `server/reminders/handler.js`, `server/reminders/index.mjs` |
+| Backend transactions/storage/push | `server/reminders/service.mjs`, `server/reminders/storage.mjs`, `server/reminders/push.mjs`, `server/reminders/configuration.schema.json` |
+| Real local protocol regressions | `server/reminders/test/local-runtime.mjs`, `server/reminders/test/reminders.test.mjs` |
+| Device-private client/orchestration | `src/app/core/services/web-reminder-ledger.ts`, `src/app/core/services/web-preparation-reminder.service.ts`, `src/app/core/services/storage.service.ts`, `src/app/app.component.ts` |
+| Actual Settings/card | `src/app/shared/components/web-reminder-settings.component.ts`, `src/app/shared/components/sleep-assistant-card.component.ts`, `src/app/features/settings/settings.page.ts`, `src/app/features/settings/settings.page.html`, `src/app/core/services/preparation-reminder.service.ts` (native/web explanation only) |
+| Application regressions | `src/app/core/services/web-reminder-ledger.spec.ts`, `src/app/features/tracker/tracker.page.spec.ts`, `src/app/core/services/sync.service.spec.ts` |
+| Optional public configuration/artifact rules | `src/assets/reminders-config.json`, `ngsw-config.json`, `scripts/prepare-pwa.mjs`, `.gitignore` |
+| User/technical/operational evidence | `README.md`, `SPEC.md` §6.17, `DEPLOY.md` private-Functions runbook, this record |
+
+Default public configuration is `{}`: no fake server, permission prompt or apparent cloud scheduling success. Only an approved exact Functions HTTPS URL and `privacyApproved: true` admit enrollment. Production eligibility is restricted to installed iPhone/iPad/iPod indications plus secure-context/worker/Push/Notifications capabilities; other browser providers do not create an FCM or other unconsented subscription. The UI exposes policy values, inactive enrollment, denied permission, waiting-network debt, accepted-plan versus accepted-push versus unknown outcome, opt-out and device/member revocation.
+
+##### 5.2. Explicit download approval and provider contracts
+
+The parent relayed **explicit user approval** for public npm **`web-push` and its necessary public transitive dependencies**, separately from prior Gradle/Temporal/PostgreSQL permissions. Executed `npm install --save-exact web-push --ignore-scripts --no-audit --no-fund` in `server/reminders/`: **3.6.7**, 17 public packages, separate lockfile. Root Angular dependencies/lock were not changed; server `node_modules` is ignored. Real encryption/VAPID comes from that established library, not hand-built production cryptography. No independent security audit of the npm supply chain is claimed.
+
+Official public documentation was consulted without proprietary code/data: [Functions runtime/context](https://yandex.cloud/en/docs/functions/lang/nodejs/context), [HTTP integration/header removal](https://yandex.cloud/en/docs/functions/concepts/function-invoke#headers), [handler](https://yandex.cloud/en/docs/functions/lang/nodejs/handler), [dependency installation](https://yandex.cloud/en/docs/functions/lang/nodejs/dependencies), [Node versions](https://yandex.cloud/en/docs/functions/lang/nodejs/), [conditional PutObject](https://yandex.cloud/en/docs/storage/s3/api-ref/object/upload), [IAM bearer storage authentication](https://yandex.cloud/en/docs/storage/api-ref/authentication). Context7 queries concerned only the public web-push API. Cached Modern Web Guidance was used offline; no extra npm permission was assumed for it.
+
+Two concrete provider corrections were made before handoff:
+
+1. Direct Functions removes ordinary `Authorization`, and arbitrary suffix routing must not be assumed. The actual protocol uses the exact function URL, `X-Lulio-Operation: status | enroll | mutate` and `X-Lulio-Device-Authorization`. No obsolete URL-route selector remains in the client or real HTTP fixtures.
+2. The published provider table lists `nodejs22` **22.15.0** and documents CommonJS entrypoints. The separate backend engine is therefore `>=22.15.0`, with `handler.js` exports loading explicit `.mjs` implementation once per instance. Local Node is **22.23.2**; an actual 22.15.0/provider runtime was not run. The application retains its Angular engine requirements.
+
+`configuration.schema.json` contains mandatory bounded policy fields and approval names without real values: invitation lifetime, inactivity, terminal detail retention, maximum active devices, daily enrollments/mutations and retained cycles. Fixture values are synthetic test settings, not approved cloud policy. The backend requires `REMINDERS_APPROVED`; dispatch separately requires `REMINDERS_UNKNOWN_NO_RETRY_APPROVED`, server-only private VAPID material and operator contact. Runtime IAM is read from the function context, never sent to the PWA. Private configuration readers, logging/copy erasure, chosen retention, global Apple processing and spend remain launch decisions.
+
+##### 5.3. Observed checks and standalone execution
+
+| Check | Observed result |
+| --- | --- |
+| Final `npx --no-install tsc --noEmit` | Exit 0 |
+| Angular MCP `app:build:production` (configured `npm run build` target) | Success **26 October, 05:45:28 UTC**; `www`, final `main-EK35U5S6.js` |
+| Following Angular MCP `app:test`, `watch:false` (configured `npx ng test --watch=false` target) | Success **05:45:37 UTC**, **26 files / 159 tests passed** |
+| Final production footprint | Initial **1.14 MB / 255.25 kB estimated transfer**; Tracker **86.62 kB / 19.29 kB**; Settings **53.88 kB / 12.96 kB** |
+| `npm --prefix server/reminders test` after direct-operation cutover | **12 tests passed**, real HTTP API plus local conditional object server; no mocked transport receipt |
+| Actual root native rerun | `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ANDROID_HOME=/opt/homebrew/share/android-commandlinetools ./gradlew --offline --rerun-tasks :baby-tracker-timer-notification:testDebugUnitTest` from `android/`: **BUILD SUCCESSFUL**, 45 tasks executed, **12 preparation + 8 timer/plugin cases**, zero failures/errors |
+| Native report timestamps | **25 October, 17:31:27 / 17:31:30 UTC**, API32/API36 Robolectric; includes `preparationConsentAndSettingsAreSeparateFromQuietPausedTimers` |
+| Public artifact tooling | `node scripts/prepare-pwa.mjs`: **67 allowlisted public objects**; optional config JSON explicitly `no-cache` and absent from `ngsw.json.hashTable`; publisher invocation without billable-confirmation flag performed only a dry run |
+| Existing warning | Temporal `jsbi` CommonJS optimization warning remains visible; no warning suppression |
+
+Permanent backend tests exercise actual conditional HTTP writes, enrollment/auth/origin/exact-field/Apple-endpoint errors, isolation of configured scope, replay/altered request-ID/old version rejection, a lost committed PUT response, competing dispatchers, cancellation/revocation before authorization, expiry/no catch-up, pre-send lease expiry fencing, unfinished authorized submission becoming unknown, bounded transient rejection, 410 retirement, owner/member rights, private recovery/closed-scope non-resurrection, inactivity, enrollment limits and non-starvation after old devices are revoked. Idle polling was corrected to **one fixed-key GET and zero PUT after daily maintenance**, rather than accidentally adding another read for every idle retention check.
+
+Standalone throwaway execution also loaded the **actual CommonJS entrypoint**, passed a synthetic runtime IAM context, rewrote only the fixed production storage URL to a real local conditional object server, recovered the owner, enrolled through actual API handler events and rejected a forged public operator operation. Observed: enrollment **200**, authenticated status **200**, public operator forgery **404**, `productionIamConditionalStorage: true`.
+
+The standalone dispatcher then generated real `web-push` AES128GCM/VAPID request bytes, sent them only through an explicitly injected loopback transport to an HTTP recipient, decrypted the received body with the recipient key and independently verified the VAPID ECDSA signature/audience using Node crypto. Observed **one accepted loopback submission**, no second submission on repeat dispatch, and **one GET on an idle tick**. Ephemeral private crypto existed only in fixture memory and was not printed or written to files. This proves local protocol/crypto execution, not an Apple acceptance or provider service-account/ETag implementation.
+
+Initial full-suite integration exposed two existing nondeterministic test assumptions: Ionic hydration moves the delete button's accessible name into its shadow button, and dynamic Supabase module loading need not finish in two zero-time fake-timer turns. The tests now exercise the actual composed accessible control/confirmation and await the durable exchange cursor; no production behavior or assertions were suppressed. Final full-suite results above include both fixes. New permanent application tests protect durable pre-commit cancellation debt, failure-safe diary persistence and exclusion of device/API credentials from actual JSON backup.
+
+##### 5.4. Actual isolated production PWA evidence and limits
+
+Used real production-built application files at **`http://127.0.0.1:4335`**, actual `ngsw-worker.js` and separately created disposable Chromium contexts, not the user's profile or cloud origin. The HTTPS Functions URL was intercepted and forwarded to the real local HTTP API/store. Browser subscription/permission and standalone platform indications were **explicit synthetic adapters**; no real push-service registration occurred. Final platform admission was also checked with an unmodified desktop indication: disabled enrollment, **zero push requests, no credential and no server member**.
+
+Observed through actual rendered controls:
+
+1. Initial state had **zero permission requests and no device credential**. Enrollment persisted a private credential, separate preflight completed, and only the explicit enable click reached the synthetic browser subscription call with `navigator.userActivation.isActive === true`. The server then held an enrolled recipient/current pending intent. The exact final **`main-EK35U5S6.js`** completed that flow under controlled installed-iPhone capabilities, using the existing root worker.
+2. Owner **«Пригласить второй телефон»** created a one-use invitation; a separate real Settings context enrolled a member. Owner revoke removed its rights; the member's next real status request cleared its local credential and returned to enrollment. Invitation/credential/key values were never included in result output.
+3. Actual Settings export produced **backup v4**, retained the synthetic profile and excluded the actual device credential, device ID and API binding. The same real file-input/confirmation import path disabled the assistant, changed unfinished preparation count **1→0**, kept a null sleep timer and did not import or auto-enable device consent.
+4. Starting preparation while the API was deliberately unreachable persisted **dirty cancellation debt / one preparation / no sleep timer**. An actual offline reload retained the preparation and the waiting-network message; reconnect cancelled the server intent, and real dispatch produced **zero sends**. Pending disable/revoke also survived offline reload with a visible retry control; reconnect acknowledged deletion and removed subscription/credential. The final installed-iPhone-capability rerun ended with **zero active devices / zero subscriptions**.
+5. A held real HTTP status response overlapped an actual profile commit and a newer explicit opt-out event. Consent remained **false**, debt changed **true→false only after acknowledgement**, the profile edit persisted and the server remained unsubscribed: late reconciliation did not re-enable delivery.
+6. Denied synthetic browser permission originally got immediately overwritten by a successful disable refresh; that was reproduced and corrected. Final UI retained **«Браузер не разрешил уведомления…»**, consent stayed false, and no misleading waiting-network or enabled state replaced the denial. New Settings buttons measured **52 CSS px**.
+7. All four actual pages opened with networking disabled and rendered their real headings: Tracker, statistics, leaps and Settings; the profile remained intact and the root worker controlled them. Actual Check update → Reload adopted changed JavaScript **`main-ACHTPKUJ.js → main-L2QOAIEH.js`** and later **`main-DSJUDZ42.js → main-KCZBOMR6.js`**, preserving serialized diary and private ledger exactly. Worker debug state remained **NORMAL**; deliberate offline fetch failures were logged, not hash-integrity failures. Final capability/direct-operation builds were subsequently exercised with fresh contexts rather than represented as those earlier update hashes.
+
+The offline restart originally hid pending revoke behind “configuration disabled”; this was observed before correction. Debt now remains visible when network-fresh config cannot be read, and network restoration reloads configuration. Public config unset on a new device was separately observed as honestly disabled with zero permission requests/credentials/enrollment controls.
+
+**Not proved locally:** real notification appearance or click. A CDP push-injection attempt did not yield a stable observable notification record, so no display/click success is claimed. The cryptographic recipient verified generic title/body/tag and fixed same-origin current-card operation; the stock Angular worker's API was reused, not replaced. No physical iPhone/Safari/Home Screen permission dialog, APNs, Focus/locked/offline TTL delivery, old installed worker receiving a real push, live Russian network, deployed Yandex CAS/IAM/logging/ACL, real-family handoff, axe or assistive-technology audit was exercised. The current native consent path has fresh actual Android-service tests, not a new physical-device acceptance.
+
+##### 5.5. Cleanup and mandatory release gates
+
+All owned isolated browser contexts were closed, including synthetic member/device storage; no user browser profile was cleared. All named local HTTP services were stopped. Owned `/tmp/lulio-stage5-local.Pn6ciD`, `/tmp/lulio-stage5-entry.MzZOpx`, `/tmp/lulio-stage5-capability.K42gRB` and `/tmp/lulio-stage5-handoff.ouMHsD` throwaways were removed after their checks. Normal ignored Node/build caches, `www`/staged PWA output and native test reports remain local artifacts, not a release. No generated native source was manually edited and no Capacitor sync/signing/publication was run in this stage.
+
+Before cloud launch, obtain explicit approval for resources/IAM/region/spend, operator recovery/enrollment, policy values, logging/configuration-reader exposure and Apple's global processing, plus the conservative unknown-send tradeoff. Exercise the real private functions/storage/timer with a separately authorized synthetic scope and harmless log markers, verify least privilege/conditional-write/auth/deletion behavior and actual costs, then complete physical §0.5 iPhone and still-open Android checks. Never restore a live state export over newer revocation/sent/closed state or rebootstrap a deleted closed key. No hard spending cap, zero bill, instant physical erasure or exactly-once delivery is claimed.
+
+##### 5.6. Parent/new-master handoff prerequisites
+
+The current parent reviews this completed **local** implementation/evidence, preserves user-owned changes/staged artifacts, and performs the explicitly requested commit/push without declaring full physical stage-5 acceptance. After that it hands master control to a **fresh new coordinator session**. The new master alone fetches/merges `origin/main` into the current branch, resolves integration without rebase/force/reset or loss of unrelated work, verifies and pushes the integrated result, and only then continues remaining work through fresh per-stage sessions. This latest user instruction supersedes the earlier suggestion that the current parent would merge main. This worker neither mutates Git nor opens another session/stage.
+
+New master must receive the resulting actual stage-5 commit/push receipt, accepted baseline SHAs `a417ce0`/`4819891`, this §5 record, SPEC §6.17, DEPLOY's private-Functions runbook, and the still-open physical/operational gates. Merge/build/test success must not be substituted for them; stage 6 has not started.
+
+### Modern Web Guidance — Stage 5
+
+- **`privacy`**: I kept enrollment and permission separate from family diary opt-in and placed the data-flow/deletion limitations before the browser permission gesture, rather than treating consent as a background side effect (“DO provide a clear reason and context before requesting powerful browser permissions”). I did not apply the guide's generic Clear-Site-Data logout advice: deleting the offline diary would violate this application's preservation contract.
+
 
 ### Этап 6. Семейная работа и сквозная приёмка
 
@@ -1063,6 +1161,7 @@ Stock Local Notifications components remain in the merged APK because the existi
 - После каждого этапа разработки выполняются TypeScript, production build и Vitest в порядке правил репозитория, а также smoke-проверка изменённого поведения. Для доставки обязательны реальные устройства. Для чистого исследования не приписываются несуществующие сборки и проверки.
 - По завершении этапа фиксируются изменённые файлы, доказательства и открытые ограничения. Статус не меняется на «выполнен» только по факту запуска сессии.
 - По указанию пользователя от 25 октября 2026 года после каждого принятого этапа создаются отдельный Git-коммит и push в текущую ветку. В коммит не включаются чужие staged-изменения, браузерные артефакты, секреты или незавершённые следующие этапы. При ошибке push фиксируется реальный блокер, без force-push и без объявления отправки успешной.
+- Новое указание пользователя, переданное 25 октября 2026 года: после завершения и проверки **локального этапа 5** текущий координатор делает его commit/push и передаёт master-control **новой отдельной coordinator-сессии**. Только новый master затем получает `origin/main`, выполняет merge в текущую ветку без rebase/force/reset и потери пользовательских изменений/staged-артефактов, проверяет и отправляет интеграцию; дальнейшие этапы — отдельными свежими сессиями. Это заменяет промежуточное указание о merge силами текущего координатора. До окончания текущего этапа никто из его workers не запускает Git-интеграцию или следующий этап; физические и облачные условия приёмки не отменены.
 - На момент добавления этого требования этапы 0–3 уже реализованы общими изменениями файлов без промежуточных коммитов. Их согласованный результат фиксируется одним совокупным коммитом, без искусственного восстановления отдельных исторических этапов; незавершённые изменения этапа 4 остаются за его пределами.
 - Вся связка считается завершённой только после этапа 6, включая Android и iPhone PWA.
 - Ночные пробуждения, расширенная аналитика, контроль забытого таймера, ВОЗ-графики, достижения, занятия и библиотека — последующие отдельные задачи.

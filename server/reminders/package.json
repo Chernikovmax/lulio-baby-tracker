@@ -1,0 +1,14 @@
+{
+  "name": "lulio-private-reminders",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "web-push": "3.6.7"
+  }
+}

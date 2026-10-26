@@ -16,6 +16,7 @@ import { PwaService } from '../../core/services/pwa.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { isSleepRoutine, type SleepRoutine } from '../../core/models/sleep-routine.models';
 import { PreparationReminderService } from '../../core/services/preparation-reminder.service';
+import { WebReminderSettingsComponent } from '../../shared/components/web-reminder-settings.component';
 
 const today = () => {
   const date = new Date();
@@ -24,7 +25,7 @@ const today = () => {
 
 @Component({
   selector: 'app-settings-page',
-  imports: [IonButton, IonContent, IonHeader, IonTitle, IonToolbar, FormField, DatePipe],
+  imports: [IonButton, IonContent, IonHeader, IonTitle, IonToolbar, FormField, DatePipe, WebReminderSettingsComponent],
   templateUrl: './settings.page.html',
   styleUrl: './settings.page.scss',
 })

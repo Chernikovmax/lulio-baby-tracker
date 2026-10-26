@@ -32,6 +32,7 @@ log.txt
 
 # Node
 /node_modules
+/server/reminders/node_modules
 npm-debug.log
 yarn-error.log
 

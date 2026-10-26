@@ -14,6 +14,7 @@ import { sleepCycleId, type SleepPreparation, type SleepCycleSuppression } from 
 import { calculateSleepForecast, type SleepForecast } from './sleep-forecast';
 import { cycleAnchorRevision, reconcileSleepPreparations } from './sleep-preparation';
 import { androidPreparationSupported, preparationNative } from './preparation-reminder.native';
+import { fenceWebReminderDiary } from './web-reminder-ledger';
 
 interface StoredData extends TrackerData {
   sync?: SyncDocument;
@@ -74,7 +75,7 @@ export class StorageService {
   readonly sleepCycleSuppressions = computed(() => this.dataResource.hasValue() ? this.dataResource.value().sleepCycleSuppressions ?? [] : []);
   /** Import invalidation is independent of repeated event IDs and timestamps. */
   readonly importGeneration = signal(0);
-  /** Native fence changes also reconcile after failed diary persistence. */
+  /** Device fence changes also reconcile after failed diary persistence. */
   readonly reminderGeneration = signal(0);
   readonly syncDocument = computed(() => this.dataResource.hasValue() ? this.dataResource.value().sync ?? null : null);
   readonly supabaseCheckpoint = computed(() => this.dataResource.hasValue() ? this.dataResource.value().supabase ?? null : null);
@@ -153,8 +154,9 @@ export class StorageService {
         // Cancel and durably fence before the diary commit. A crash between stores misses
         // a reminder rather than publishing a superseded plan while JavaScript is closed.
         await preparationNative.preparationInvalidate();
-        this.reminderGeneration.update(value => value + 1);
       }
+      fenceWebReminderDiary();
+      this.reminderGeneration.update(value => value + 1);
       await Preferences.set({ key: STORAGE_KEY, value: snapshot });
       this.dataResource.value.set(JSON.parse(snapshot) as StoredData);
     });

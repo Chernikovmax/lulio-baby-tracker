@@ -64,7 +64,15 @@ describe('Экономный обмен Supabase', () => {
     await vi.advanceTimersByTimeAsync(0);
     await storage.whenIdle();
   }
-  async function connect() { await sync.saveConfig(config); await settle(); }
+  async function connect() {
+    await sync.saveConfig(config); await settle();
+    // Dynamic module loading may finish after the zero-time timer turns above.
+    // Await the durable consumer-visible exchange result, not a fixed turn count.
+    await vi.waitFor(() => {
+      if (failJoin) expect(sync.error()).not.toBeNull();
+      else expect(storage.supabaseCheckpoint()?.version).toBe(response.version);
+    });
+  }
 
   it('получает общий режим через RPC и отправляет последующее изменение, не копируя локальный профиль', async () => {
     const routine = { version: 1, timeZone: 'Europe/Moscow', nightStartFrom: '23:00', nightStartTo: '01:00',

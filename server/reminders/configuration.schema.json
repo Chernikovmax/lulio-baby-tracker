@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private reminder function-version configuration (names and constraints only)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["REMINDERS_APPROVED", "REMINDERS_BUCKET", "REMINDERS_OBJECT_KEY", "REMINDERS_SCOPE", "REMINDERS_ORIGIN", "REMINDERS_POLICY", "VAPID_PUBLIC_KEY"],
+  "properties": {
+    "REMINDERS_APPROVED": { "const": "true", "description": "Set only after explicit resource, region, cost, IAM, enrollment/recovery, retention/logging, operator visibility and global Apple processing approval." },
+    "REMINDERS_BUCKET": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$", "description": "Separate never-public Russia-region STANDARD bucket; no versioning, replication, object lock or reminder exports." },
+    "REMINDERS_OBJECT_KEY": { "type": "string", "pattern": "^[A-Za-z0-9_-]{32,128}$", "description": "Single fixed opaque aggregate key. Never reuse after closure/deletion." },
+    "REMINDERS_SCOPE": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$", "description": "Opaque 32-byte family scope, not a diary family UUID and not an enrollment credential." },
+    "REMINDERS_ORIGIN": { "type": "string", "format": "uri", "description": "Exact approved HTTPS PWA origin, without path or trailing slash." },
+    "REMINDERS_POLICY": { "type": "string", "description": "JSON serialization of policy below. All fields mandatory; there is no implicit approved retention policy.", "contentMediaType": "application/json", "contentSchema": { "$ref": "#/$defs/policy" } },
+    "VAPID_PUBLIC_KEY": { "type": "string", "pattern": "^[A-Za-z0-9_-]{87}$", "description": "Valid uncompressed P-256 application-server public key matching the dispatcher private key; safe to send to enrolled devices." },
+    "VAPID_PRIVATE_KEY": { "type": "string", "writeOnly": true, "description": "Dispatcher function only, provided through a separately approved protected channel. Never put a value in this file, source, arguments, diary, logs, backup or PWA." },
+    "VAPID_SUBJECT": { "type": "string", "description": "Dispatcher operator contact, mailto or HTTPS, approved before deployment." },
+    "REMINDERS_UNKNOWN_NO_RETRY_APPROVED": { "const": "true", "description": "Dispatcher gate: explicit approval of possible missed signals rather than automatic retry of ambiguous external acceptance." }
+  },
+  "$defs": {
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inviteSeconds", "inactivityDays", "terminalHours", "maxDevices", "maxEnrollmentsPerDay", "maxMutationsPerDay", "maxCyclesPerDevice"],
+      "properties": {
+        "inviteSeconds": { "type": "integer", "minimum": 60, "maximum": 3600 },
+        "inactivityDays": { "type": "integer", "minimum": 1, "maximum": 90 },
+        "terminalHours": { "type": "integer", "minimum": 1, "maximum": 168 },
+        "maxDevices": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "maxEnrollmentsPerDay": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "maxMutationsPerDay": { "type": "integer", "minimum": 10, "maximum": 1000 },
+        "maxCyclesPerDevice": { "type": "integer", "minimum": 30, "maximum": 1000 }
+      }
+    }
+  }
+}

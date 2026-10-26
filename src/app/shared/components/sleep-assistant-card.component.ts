@@ -5,6 +5,7 @@ import { StorageService } from '../../core/services/storage.service';
 import { ClockService } from '../../core/services/clock.service';
 import { cycleMatches } from '../../core/services/sleep-preparation';
 import { PreparationReminderService } from '../../core/services/preparation-reminder.service';
+import { WebPreparationReminderService } from '../../core/services/web-preparation-reminder.service';
 
     const labels: Record<string, string> = {
       'assistant-disabled': 'Помощник выключен', 'active-sleep-including-pause': 'Сон активен, включая паузу',
@@ -36,7 +37,7 @@ import { PreparationReminderService } from '../../core/services/preparation-remi
         <p>{{ explanation() }}</p>
         @if (plan.state === 'sleeping') { <p>{{ completedPreparationLabel() }}</p> }
       }
-      <p role="status">{{ reminders.description() }}</p>
+      <p role="status">{{ reminders.supported ? reminders.description() : webReminders.description() }}</p>
       <details>
         <summary>Основание и ограничения прогноза</summary>
       @if (plan.anchor) {
@@ -71,6 +72,7 @@ import { PreparationReminderService } from '../../core/services/preparation-remi
 export class SleepAssistantCardComponent {
   readonly forecasts = inject(SleepForecastService);
   readonly reminders = inject(PreparationReminderService);
+  readonly webReminders = inject(WebPreparationReminderService);
   private readonly storage = inject(StorageService);
   private readonly clock = inject(ClockService);
   readonly clarify = output<void>();

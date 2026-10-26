@@ -5,6 +5,7 @@ import { TimerNotificationService } from './core/services/timer-notification.ser
 import { PwaService } from './core/services/pwa.service';
 import { ThemeService } from './core/services/theme.service';
 import { PreparationReminderService } from './core/services/preparation-reminder.service';
+import { WebPreparationReminderService } from './core/services/web-preparation-reminder.service';
 
 @Component({
   selector: 'app-root',
@@ -16,5 +17,6 @@ export class AppComponent {
   private readonly yandex = inject(YandexSyncService);
   private readonly timerNotifications = inject(TimerNotificationService);
   private readonly preparationReminders = inject(PreparationReminderService);
+  private readonly webPreparationReminders = inject(WebPreparationReminderService);
   private readonly theme = inject(ThemeService);
 }

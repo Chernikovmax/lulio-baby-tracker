@@ -97,9 +97,12 @@ describe('Удаление записи из ленты', () => {
 
   it('не удаляет запись одним нажатием на корзину', async () => {
     const { storage, fixture } = await render();
-    const trash = fixture.nativeElement.querySelector('ion-button[aria-label="Удалить: Подгузник · мокрый"]') as HTMLElement;
+    const hosts = Array.from(fixture.nativeElement.querySelectorAll('ion-button')) as HTMLElement[];
+    const trash = hosts.flatMap(host => [host, ...Array.from(host.shadowRoot?.querySelectorAll('button') ?? [])])
+      .find(button => button.getAttribute('aria-label')?.startsWith('Удалить:'))!;
     trash.click();
     await fixture.whenStable();
+    expect(fixture.componentInstance.pendingDelete()?.event).toEqual(diaper);
     expect(storage.events()).toEqual([diaper]);
   });
 

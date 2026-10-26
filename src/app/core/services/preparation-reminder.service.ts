@@ -18,7 +18,7 @@ export class PreparationReminderService {
   readonly error = signal('');
   private updates: Promise<void> = Promise.resolve();
   readonly description = computed(() => {
-    if (!this.supported) return 'Фоновые напоминания доступны в Android APK. В iPhone PWA доставка ещё не подключена.';
+    if (!this.supported) return 'Android-напоминания доступны только в APK. Для установленной PWA используйте отдельный раздел ниже.';
     if (this.error()) return this.error();
     const status = this.status();
     if (!status) return 'Проверяем настройки этого Android…';
