@@ -406,6 +406,31 @@ Record the actual non-secret bucket name, region, HTTPS URL, deployed commit/bui
 
 Object Storage serves public application files; it does not synchronize private diary data. Follow [README.md](README.md) for the independent sync setup. In the browser, Yandex Disk requests depend on Yandex CORS, and the token is held **only in tab memory**: after reload, a new login is required. Successful PWA hosting/offline tests do not establish working Disk sync. Verify the real browser authorization/exchange separately with the user's authorized accounts, or explicitly report that sync as unverified. Never put diary exports or tokens into the public hosting bucket.
 
+## Рабочий Supabase: миграции помощника сна — 26 октября 2026 года
+
+По явному указанию владельца через его авторизованную вкладку Supabase SQL Editor в проекте **lulio / main PRODUCTION** последовательно применены:
+
+1. `supabase/migrations/202610240003_sleep_forecast_facts.sql`
+2. `supabase/migrations/202610240004_sleep_preparations.sql`
+
+До применения системный каталог подтвердил схему первых трёх миграций: RPC совпадала с `202610240002_sleep_routine.sql`, новые валидаторы отсутствовали. Таблицы `supabase_migrations.schema_migrations` нет; ручное применение не создавало её и не добавляло фиктивную историю.
+
+Обе транзакции завершились **Success. No rows returned**. Полный текст каждого файла в Monaco проверен SHA-256 перед успешным запуском: `…003` — `f761de866b82dda3bd54763756e5ef6902561febbc2b31fa566067015c7d1e91`, `…004` — `8b5e138697df8ec41d09df00618a9306ef409193cfb7df808721abbca2725672`. Первая попытка вставки через browser fill не заменила весь буфер редактора и дала syntax error; после ошибки полный model заменён и проверен, успешные запуски используют точные файлы.
+
+После `…003` отдельно подтверждены RPC и sleep-fact validator. После `…004` диагностический SELECT по системному каталогу дал следующие MD5 тел функций без пробельных символов; значения совпали с локальными файлами:
+
+| Функция | Проверенный MD5 |
+| --- | --- |
+| `exchange_tracker_family` | `c9dc82d9836910b4db9c344117e33e5e` |
+| `valid_tracker_sleep_fact` | `9360bad3935b4dddeb310add87db08f5` |
+| `valid_tracker_assistant_fact` | `53d9946faa7224f0ae32590125966875` |
+
+RPC сохранила SECURITY DEFINER и пустой search_path; EXECUTE разрешён authenticated, запрещён anon. Оба внутренних валидатора недоступны authenticated/anon и имеют пустой search_path. Read-only smoke на синтетических литералах подтвердил приём корректного wake/suppression и отклонение некорректного wake/preparation — все четыре результата true. Вызовы не создают семейных записей.
+
+Содержимое дневника и секреты не читались; приложения и настройки синхронизации не менялись. Эти миграции заменяют функции/права, не выполняют миграционную запись в дневник. Полная проверка обмена реальных телефонов, JWT/Realtime и физическая приёмка напоминаний этим не выполнены. APK/PWA не публиковались, reminder Functions/Object Storage и реальные push-подписки не создавались. Перед использованием новых общих фактов обновите оба клиента; прежние локальные доказательства и открытые условия этапов 4–6 сохраняются.
+
+Перед отправкой всех локальных этапов в `origin/main` получен свежий main `149e7b5` и выполнен обычный merge в текущую ветку без конфликтов. Последовательно прошли TypeScript, Angular MCP production build **06:57:30 UTC** (`main-EK35U5S6.js`, `styles-KOQDPYCG.css`) и **26 файлов / 159 Vitest-тестов**. Дополнительно прошли **12 backend**, **11 tooling** и новый **11-шаговый production PWA smoke** в отдельном Chromium-профиле: обе темы, ввод бутылочки, пауза/завершение сна, offline reload/полный restart, четыре offline-страницы и worker health. Предупреждение Temporal `jsbi` сохранено. Нативные исходники с предыдущего успешного 20-case root Gradle-прогона не менялись; новый native-прогон не заявляется. Git-интеграция не является публикацией APK/PWA или приёмкой доставки.
+
 ## Private reminder Functions — local implementation only
 
 **No reminder resources or real subscriptions have been provisioned by stage 5.** The existing public PWA bucket and its earlier spend/publication approvals do not authorize a private reminder bucket, Functions, IAM, VAPID configuration, Apple traffic or this feature's publication. Physical Android/iPhone acceptance and `RESEARCHES.md` §0.5/§5 remain separate gates.
