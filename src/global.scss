@@ -168,6 +168,11 @@ html.ion-palette-dark:is([data-theme='terracotta'], [data-theme='muted-sage']) {
     --border-style: solid;
     --border-color: var(--app-action-border);
     --border-radius: 8px;
+
+    /* Ionic solid toolbar buttons otherwise use the toolbar background as text. */
+    &::part(native) {
+      color: var(--color);
+    }
   }
   ion-button:not([color])[fill='outline'] {
     --background: transparent;
