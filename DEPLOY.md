@@ -109,6 +109,13 @@ Limits: preflight is not an Android native build/signature/install/update test, 
 
 Published v1.4.0 CI [40173809891](https://github.com/Chernikovmax/lulio-baby-tracker/actions/runs/40173809891) reported build job **3m9s**, Gradle assembleRelease **130s**, tests **17s**, npm ci **9s**, web build **7s**, signing/verification **1s**, publication **4s**, release job **24s**. This is historical evidence, not a controlled cold/warm comparison for the new cache. Record new unsigned PR/branch run URLs, cache hit/miss state and actual durations separately; no speedup is promised without comparable observations.
 
+### Android 1.5.0 release preparation (2026-10-26)
+
+- Requested baseline: `origin/main` pinned to `17d91d9502c830832b491b85d1e676bb786b424f`. Release preparation changes only package/lockfile version metadata and this release record; no application, generated Android, application-ID, signing-identity or PWA changes.
+- Version: **1.5.0**; calculated Android versionCode: **1005000**.
+- Operator workspace: **lulio-android-releases**; reused clean isolated linked checkout `/Users/chernikovmax/orca/workspaces/lulio-android-v1.1.1`, branch `release/android-v1.5.0`. The shared checkout is not switched or built.
+- The owner explicitly approved network access, release branch/tag push and publication through the existing tag-gated signing workflow. Local preflight, CI and downloaded-release verification are recorded after observation; preparation alone is not publication or physical-device acceptance.
+
 ### Android 1.4.0 release preparation (2026-10-25)
 
 - Pinned feature source: `4945ceb83f9d188d11bdf3bc2b7eca75b8bf360c`, merged night-theme PR #2. Release changes are package/lockfile version metadata, this documentation, and the separately owner-approved minimal test setup repair below. No later application commits, generated Android changes, application-ID changes, signing changes, or PWA deployment are included.
