@@ -1144,6 +1144,15 @@ New master must receive the resulting actual stage-5 commit/push receipt, accept
 - **`privacy`**: I kept enrollment and permission separate from family diary opt-in and placed the data-flow/deletion limitations before the browser permission gesture, rather than treating consent as a background side effect (“DO provide a clear reason and context before requesting powerful browser permissions”). I did not apply the guide's generic Clear-Site-Data logout advice: deleting the offline diary would violate this application's preservation contract.
 
 
+### Интеграция `origin/main` новым координатором — 26 октября 2026 года
+
+- Существующий Orca Run `run_11c2abb719cd` привязан к новой master-сессии. После отправленного локального этапа 5 (`e9a8022`) выполнен `git fetch origin main`; получен `b887bb1`. Интеграция — merge в `feat/night-themes`, без rebase, force-push или reset.
+- Merge выполнен через отдельный временный Git index: исходный пользовательский index оставался побайтово неизменным во время интеграции. Восемь staged Playwright-артефактов и прежние untracked-файлы не входят в merge; контрольные суммы всех 31 существовавших файлов `.playwright-mcp/` сохранены. Конфликты `app.component.ts` и `settings.page.ts` разрешены сохранением reminder-сервисов и режима вместе с темами из main.
+- Последовательно прошли `npx --no-install tsc --noEmit`, Angular MCP `app:build:production` (05:57:50 UTC, `main-EK35U5S6.js`) и `app:test` с `watch:false`: **26 файлов / 159 тестов**. Предупреждение Temporal `jsbi` осталось видимым.
+- Дополнительно прошли `npm --prefix server/reminders test` (**12**), `npm run test:pwa` (**11**) и реальный полный root Gradle `--offline --rerun-tasks :baby-tracker-timer-notification:testDebugUnitTest`: **20 native-тестов**, без failures/errors, отчёты 05:58:17/20 UTC. Это Robolectric API32/API36, не физический Android.
+- Реальный production PWA smoke через новый `scripts/smoke-pwa.mjs` и локальный allowlisted-сервер прошёл **11 шагов** в отдельном Chromium-профиле: обе темы и reload, бутылочка 125 мл через форму, начало/пауза сна, offline reload, полный перезапуск браузера offline, завершение сна, четыре offline-страницы и здоровье существующего worker. `pageErrors=[]`, внешних запросов не наблюдалось. Это не проверка Web Push или обновления между разными версиями: `upgraded=false`.
+- Облачные ресурсы, расходы, публикация, реальные подписки и устройства не затрагивались. Физическая и облачная приёмка этапов 4–6 остаётся открытой; следующая отдельная сессия может завершать достижимую локальную сквозную проверку, но не объявлять всю поставку принятой.
+
 ### Этап 6. Семейная работа и сквозная приёмка
 
 **Зависимость:** этап 5.

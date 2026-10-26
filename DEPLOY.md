@@ -24,7 +24,7 @@ Source of truth: [workflow](.github/workflows/android-release.yml), [version scr
 
 1. Agree the version and commit with the maintainer, update version metadata, complete checks, and merge the intended revision. Confirm the tag target contains exactly those changes.
 2. With explicit approval, create and push the exact `v<version>` tag to the intended repository. A push to `main`, PR targeting `main`, or manual dispatch also builds, but a normal branch run does **not** publish a Release. The release job is gated by a `refs/tags/v` ref; a manual run must also target the exact matching tag to qualify.
-3. Inspect the **Android APK** Actions run for that tag and commit. CI uses Node 22.23.2, Java 21, Android platform 36/build-tools 36.0.0; it validates version/tag agreement, runs `npm ci`, TypeScript checks, production build, unit tests, and `npx cap sync android`, then runs:
+3. Inspect the **Android APK** Actions run for that tag and commit. CI uses the explicit **ubuntu-24.04** runner label, Node **22.23.2**, Temurin Java **21**, Android platform **36**/build-tools **36.0.0**; it validates version/tag agreement, runs `npm ci`, TypeScript checks, production build, unit tests, and `npx cap sync android`, then runs:
 
    ```sh
    # From android/; normally executed by CI, not a publication command.
@@ -51,6 +51,88 @@ adb install -r lulio-baby-tracker-v<VERSION>.apk
 
 Replace `<VERSION>` with the numeric version. Compare the public signer certificate fingerprint with the trusted previous release; checksum agreement alone does not establish publisher identity. Confirm package ID, version name/code using SDK APK inspection tools. On a real device, verify launch, diary entry/timer persistence after restart, and, where a previous signed release is available, an in-place update retaining data. Never uninstall or clear storage to disguise a failed update. Record unavailable device/update checks as unverified.
 
+### Release workflow optimizations and local preflight
+
+The optimization workflow does not change application version, application ID, signing identity, or the immutable v1.4.0 release. Only the tag-gated CI release job may sign or publish. Never dispatch a published tag merely to benchmark caching: that would rerun publication with `--clobber`.
+
+#### CI gates and cache trust
+
+- The workflow still runs on every PR targeting `main`, every push to `main`, every `v*` tag push, and manual dispatch. There are **no workflow-level `paths` filters**. The existing required job/check **`build`** always runs checkout and the changed-file gate, and reports success for proven docs-only changes. Do not replace it with an optionally created check. A gate test failure fails the job, not a successful skip.
+- The only documentation allowlist is root `README.md`, root `DEPLOY.md`, and `docs/` Markdown paths whose directory/file basenames contain only ASCII letters, digits, `_` or `-`. This does not include `.github/`, scripts, generated assets, arbitrary root Markdown, or unknown extensions. Unknown or mixed changes build.
+- PRs compare the merge-base of the event's base/head SHAs to the complete head. Pushes compare the event's exact before/after trees (including multi-commit and force pushes). Full checkout history is available. NUL-delimited Git output and disabled rename detection make both sides of a rename, and deleted paths, participate in the decision. A code-to-doc rename must build. Missing objects/payloads, zero SHAs, empty diffs and unknown events conservatively build.
+- **Every tag and every manual dispatch takes the full gate**, even if the tree differs only in documentation. Tags still require exact `v<package.json.version>` agreement; tests and APK build cannot be replaced by a branch artifact. Docs-only runs do not upload an APK and never publish a release.
+- `gradle/actions/setup-gradle` uses the open-source **basic** cache provider, not a third-party enhanced cache service. It caches only `caches/` and `wrapper/` beneath the build job's fresh `$RUNNER_TEMP/gradle-user-home`. It does not cache the repository, `gradle.properties`, credentials, signing material, or the signing job. No configuration-cache encryption key, build-scan publication or dependency submission is configured. Do not add a second Gradle cache in setup-java or actions/cache.
+- PRs (including same-repo PRs) and arbitrary dispatch branches are cache **read-only**. Trusted `main` and `v*` runs may write. GitHub's cache ref isolation still applies: tag-local writes do not warm `main`. Only a trusted `main` build can populate the shared default-branch cache; until then a PR can legitimately be cold. Never weaken trust just to produce warm measurements.
+- Basic cache keys hash Gradle build/configuration files; no exact hit means a cold cache. Generated Capacitor files can affect the next key, and cached dependencies do not eliminate compilation. Inspect setup-gradle restore/save logs and the `Build release APK` step duration; compare equivalent runner/source/toolchain conditions before claiming a gain.
+- Actions are pinned to supported concrete releases: checkout **7.0.1**, setup-node **7.1.0**, setup-java **6.1.0**, upload-artifact **7.0.2**, download-artifact **8.0.2**, setup-android **4.0.4**, setup-gradle **6.4.0**. Their Node 24 action runtime is separate from application Node 22.23.2. `ubuntu-24.04` avoids the announced `ubuntu-latest` → 26.04 migration, but GitHub still patches that image; it is not an immutable VM digest.
+- Compatibility sources reviewed: [checkout](https://github.com/actions/checkout), [setup-node](https://github.com/actions/setup-node), [setup-java](https://github.com/actions/setup-java), [artifact upload](https://github.com/actions/upload-artifact), [artifact download](https://github.com/actions/download-artifact), [Android setup](https://github.com/android-actions/setup-android), [Gradle cache provider/trust](https://github.com/gradle/actions/blob/main/docs/setup-gradle.md), [Ubuntu 24.04 image](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md), [AGP 8.13 compatibility](https://developer.android.com/build/releases/agp-8-13-0-release-notes), [Gradle 8.14.3 Java matrix](https://docs.gradle.org/8.14.3/userguide/compatibility.html). Existing Gradle **8.14.3**, AGP **8.13.0** and Java **21** are retained; AGP requires Gradle ≥8.13/JDK ≥17 and Gradle supports running on Java 21.
+
+#### Reproducible local commands
+
+Use the **existing isolated linked Android worktree**, not the shared dirty `petprojects` checkout and not the PWA owner's checkout. Commit intended source changes first. Do not reset/stash/switch another owner's work. The script refuses a primary checkout, a dirty worktree (including untracked files), a different source SHA, mismatching package/lockfile versions, invalid Android versionCode bounds, or unsupported Node. It requires Node `^22.22.3 || ^24.15.0 || >=26.0.0`; **22.23.2** matches CI.
+
+```sh
+# Run from /Users/chernikovmax/orca/workspaces/lulio-android-v1.1.1.
+# Inspect status and agree the full source SHA before invoking preflight.
+git status --short --branch
+git rev-parse HEAD
+node scripts/android-preflight.mjs --sha <AGREED_40_CHARACTER_SOURCE_SHA> --version 1.4.0
+```
+
+Use the agreed package version for a future release, not an automatic version bump. Preflight validates source/version/isolation **before any install/build**. It then runs sequentially, stopping at the first failure:
+
+1. `npm ci`
+2. `npx tsc --noEmit`
+3. `npm run build`
+4. `npx ng test --watch=false`
+5. `node scripts/android-smoke.mjs`
+
+It rechecks source cleanliness/SHA/version after each command and prints observed per-command timings. `npm ci` replaces only this worktree's `node_modules`; build changes ignored `www/` output. The script does not create a worktree, change refs, stage, commit, sync Capacitor, build/sign an APK, access secrets, or publish anything. A failed check requires investigation, not bypassing assertions.
+
+The browser runner can also be run independently after a fresh production build:
+
+```sh
+node scripts/android-smoke.mjs
+# Exercise the actual classifier against disposable Git histories:
+node --test scripts/android-build-needed.test.mjs
+```
+
+Browser requirements: approved network access to npm and Playwright's browser download CDN, writable OS temporary directory, and Chromium headless system libraries. On Linux, provision supported Playwright Chromium OS dependencies on the runner before use; this script never runs sudo or installs system packages. The runner installs tool-only **playwright@1.64.1** into a fresh temporary directory, invokes that exact package's `install chromium --only-shell`, and uses the matching browser through Playwright's supported discovery. There is no hardcoded browser-cache revision, system-browser fallback, app dependency upgrade, or connection to the occupied MCP/user browser. A missing download/library/executable fails visibly; do not suppress it or reuse a different cached revision. See [Playwright browser installation](https://playwright.dev/docs/browsers) and [isolated browser contexts](https://playwright.dev/docs/browser-contexts).
+
+For a separately approved Linux machine/CI image preparation, the matching official dependency command is `npm exec --yes --package=playwright@1.64.1 -- playwright install-deps chromium`. It can invoke sudo and install OS packages; run it only with the machine owner's permission, not as part of release preflight. macOS does not need this Linux package step.
+
+The smoke serves only local production `www/` on an ephemeral loopback port and launches its own Chromium process/nonpersistent context at 390 × 844. Service workers are blocked to test the freshly built bundle deterministically; external requests are blocked and any attempt fails acceptance. Only synthetic browser-local data is created. It checks distinct rendered Terracotta/Muted Sage colors, selected controls and reload persistence for both, a failed theme-storage write retaining the selected/stored palette after reload, unknown-theme default fallback, and sleep start/pause/frozen elapsed/paused reload/finish with durable diary event timestamps. The temporary tool/browser files, context/process and server are cleaned on success, failure and SIGINT/SIGTERM (SIGKILL or machine loss cannot execute cleanup). No user browser profile or real storage is opened.
+
+Limits: preflight is not an Android native build/signature/install/update test, physical-device lifecycle/data-retention acceptance, or PWA publication/service-worker lifecycle acceptance. The independent smoke command requires a fresh bundle; only the complete preflight ties a freshly rebuilt bundle to the validated source SHA. Do not infer signed-release acceptance from a branch CI APK.
+
+#### Timing baseline
+
+Published v1.4.0 CI [40173809891](https://github.com/Chernikovmax/lulio-baby-tracker/actions/runs/40173809891) reported build job **3m9s**, Gradle assembleRelease **130s**, tests **17s**, npm ci **9s**, web build **7s**, signing/verification **1s**, publication **4s**, release job **24s**. This is historical evidence, not a controlled cold/warm comparison for the new cache. Record new unsigned PR/branch run URLs, cache hit/miss state and actual durations separately; no speedup is promised without comparable observations.
+
+### Android 1.4.0 release preparation (2026-10-25)
+
+- Pinned feature source: `4945ceb83f9d188d11bdf3bc2b7eca75b8bf360c`, merged night-theme PR #2. Release changes are package/lockfile version metadata, this documentation, and the separately owner-approved minimal test setup repair below. No later application commits, generated Android changes, application-ID changes, signing changes, or PWA deployment are included.
+- Version: **1.4.0**; calculated Android versionCode: **1004000**. Features: device-local **Terracotta** and **Muted Sage** selection in Profile; theme preference is not shared with family or included in diary backups.
+- Isolated physical checkout: `/Users/chernikovmax/orca/workspaces/lulio-android-v1.1.1`, initially clean. The dirty shared `petprojects` checkout was not switched, built, staged, or committed.
+- Release-gate repair, explicitly approved during preparation: `sync.service.spec.ts` now statically loads its mocked lazy Supabase module before fake-timer settling. The full suite initially failed twice because two tests inspected connection results before module loading completed; the same file passed alone. No assertions were removed or weakened, no production code changed. After the setup repair, sequential `npm ci`, `npx tsc --noEmit`, `npm run build`, and `npx ng test --watch=false` passed on Node **22.23.2**: **103 tests in 19 files**.
+- Local mobile Chromium production-bundle smoke (390 × 844): both palettes applied with distinct primary colors; Terracotta persisted across navigation/reload; sleep timer start, pause and finish worked under Muted Sage; four primary dock controls measured **72px** at y=707, in the bottom third. A synthetic theme-storage write failure retained the previous selected/stored palette and displayed the error; an unsupported stored theme fell back to default. No browser page errors were observed. This is browser smoke, not native-device acceptance.
+- Freshly downloaded trusted v1.3.0 attachments passed checksum/signature verification; package **io.ionic.starter**, versionCode **1003000**, public signer SHA-256 **`caf549bd5fdb2248856e820b70efbda2c895890328eee189fa512df35156ee13`**.
+- `adb devices -l` found no connected devices. Physical install, native launch, update from v1.3.0, and diary/timer data retention remain unverified. Signed publication and downloaded v1.4.0 verification are recorded separately after CI succeeds.
+
+### Android 1.4.0 publication receipt (2026-10-25)
+
+- **Release:** https://github.com/Chernikovmax/lulio-baby-tracker/releases/tag/v1.4.0 — published **07:46:26Z**, not draft or prerelease; confirmed latest.
+- **APK:** https://github.com/Chernikovmax/lulio-baby-tracker/releases/download/v1.4.0/lulio-baby-tracker-v1.4.0.apk — **3,948,664 bytes**. Both this signed attachment and `SHA256SUMS` were downloaded from the actual Release into `dist/android-release-verification/v1.4.0/`, not from a branch/unsigned artifact.
+- **Immutable source/tag:** `v1.4.0` resolves remotely to **`113847754d4d4151f64ddc8a3f9580bf13311112`**, the squash merge of release-preparation [PR #3](https://github.com/Chernikovmax/lulio-baby-tracker/pull/3). Its sole parent is pinned feature commit **`4945ceb83f9d188d11bdf3bc2b7eca75b8bf360c`**; its tree exactly matches locally verified preparation **`544788acab6cd189b8fa5e3f574c8e7b4012a802`**. No later main commits entered the release.
+- **CI:** https://github.com/Chernikovmax/lulio-baby-tracker/actions/runs/40173809891 — exact tag/SHA; **build** and **release** succeeded, including signature/alignment verification and publication. Preparation PR build/security checks passed. Action-runtime/setup-java deprecation and runner-image migration notices were non-fatal; the published workflow was not rerun.
+- **Downloaded-byte verification:** `shasum -a 256 -c SHA256SUMS` passed. Independently calculated SHA-256:
+  - `lulio-baby-tracker-v1.4.0.apk`: **`b56c77f8a8b80bb45becac861338ce4cc734c755cd8f2c09fe317e213235d8c2`**.
+  - `SHA256SUMS`: **`a0716500d9a38d96f118774204b753077e1e8ac74e2be9b00215110355cc6f6b`**.
+- **SDK verification:** installed build-tools **35.0.0** `apksigner verify --verbose --print-certs` passed, one signer with v2/v3 signatures; `zipalign -c -p 4` passed. `aapt dump badging` confirmed **io.ionic.starter**, versionName **1.4.0**, versionCode **1004000**, min SDK **24**, target SDK **36**.
+- **Signing continuity:** fresh actual v1.3.0 Release downloads passed published checksum and signature checks. Both APKs have public signer SHA-256 **`caf549bd5fdb2248856e820b70efbda2c895890328eee189fa512df35156ee13`**; application ID matches and versionCode increases from **1003000** to **1004000**. Only the approved CI signing workflow accessed configured signing secrets; no private signing material or secret values were read.
+- **Runtime and limits:** final production-bundle browser smoke additionally confirmed both palettes survive reload. Local mandatory checks passed **103/103 tests, 19 files** after the approved test-only repair. A final `adb devices -l` again found no connected device: physical installation, native launch/lifecycle, in-place update and diary/timer data retention are **unverified**. No uninstall, storage clearing, or PWA deployment occurred.
+- This post-publication documentation receipt does not move the release tag or change its APK source.
+
 ### Android 1.3.0 release preparation (2026-10-24)
 
 - Requested baseline: `b0161b6055fa6cca03c91a3a6db8ea1e5abdd513`. Its model declarations prevented TypeScript, production build, and test compilation. The owner explicitly authorized a minimal repair before publication.
@@ -74,6 +156,21 @@ Replace `<VERSION>` with the numeric version. Compare the public signer certific
 
 
 ## PWA → Yandex Object Storage
+
+### PWA 1.4.0 publication receipt (2026-10-25)
+
+- **Published and verified:** https://lulio.website.yandexcloud.net/, existing Russia bucket `lulio`, folder `b1g76scolnksmil9po8q`. Operator receipt: **`LULIO_PUBLISHED 2026-10-25T08:15:50.371683+00:00 66`**. The initial unavailable-console blocker was resolved when the owner restored the existing embedded Orca session. No competing deployment owner, new infrastructure, permission expansion, remote deletion or client-storage clearing.
+- **Exact source:** remote immutable `v1.4.0` resolves to **`113847754d4d4151f64ddc8a3f9580bf13311112`**; its sole parent is approved theme merge `4945ceb83f9d188d11bdf3bc2b7eca75b8bf360c`. Release preparation changes only package/lock versions, documentation and the Android owner's approved test setup repair. No independent version bump or tag movement.
+- **Isolation/checks:** reused the initially clean physical checkout `/Users/chernikovmax/orca/workspaces/lulio-pwa-v1.1.1-release`, detached at that SHA for the build. The shared dirty checkout and its devserver were not modified or built. Node **22.23.2**; sequential `npm ci --no-audit --no-fund`, `npx tsc --noEmit`, `npm run build`, `npx ng test --watch=false` passed: **103 tests, 19 files**. Production build completed **07:52:26.658Z**. Subsequent receipt commits do not alter the release artifact or tag.
+- **Pinned public artifact:** `dist/lulio-pwa-v1.4.0-1138477.zip`, **544,710 bytes**, SHA-256 **`ad11905f9602106e63993d57a03b504b55fb29525248f7ead6379ebeeccc7530`**; adjacent checksum file retained. `scripts/prepare-pwa.mjs` validated SW resource hashes and generated the authoritative **66-object** ordered allowlist. The ZIP contains only that plan and its public files, not source, credentials, environment files or diary exports. Final public `ngsw.json` SHA-256: **`4b04fff2bcbb382f1967e61e4fb03a645d036b875c3768132475aec44f6a1f3c`**.
+- **Authorized publication:** existing Cloud Shell confirmed bucket/folder, STANDARD storage, public object reads with private listing/configuration, and website index `index.html`. The archive was transferred privately over that terminal and its checksum matched before extraction. An operator loop used `yc storage s3api put-object`, exact plan keys and explicit MIME/cache metadata; each uploaded object was fetched over public HTTPS and checked before advancing. Dependencies preceded entrypoints; **`ngsw.json` was last**. No upload-loop failure or rollback occurred. Temporary private archive/operator files were removed after acceptance.
+- **Rollback:** retained `dist/lulio-pwa-v1.3.0-a395f64.zip`, SHA-256 **`370ae7c38bf6d7c19963d3974f9981f22dd5ed3fcd1863374d331cda68b80401`**. All **62** old live objects matched its bytes/MIME/cache before publication; the operator independently verified and saved them privately before mutation. After publication, all **39** old hashed dependencies still matched. Restore the complete matching old release in plan order with its manifest last if required; never clear diary storage or delete either version's chunks.
+- **Independent public HTTP acceptance:** all **66** new objects matched complete bytes, MIME and Cache-Control with TLS verification enabled. Root plus five exact/trailing-slash route pairs (**11 URLs**) matched the new index with HTTP 200; missing JS returned real **404**. Fresh SW-blocked Chromium clients directly rendered tracker, stats, leaps and settings. Python's initial default trust store lacked an issuer; verification used installed certifi roots, never disabling TLS verification.
+- **Whole-version public update:** an isolated persistent Chromium profile cached old `main-24HDUEOZ.js`, saved a synthetic profile, a **90 ml bottle entry** and an active sleep timer. **Profile → Check for update → Reload** adopted **`main-B733BCRC.js`**, with SW version **`0665931f4acb1b528f48df2825933c79a5d51de0` → `623450a14ec823961b30f0d4c18711a28541f35d`**. Complete serialized diary/profile/timer bytes were identical before/after adoption; no cache clearing. Worker driver **NORMAL**, empty debug log.
+- **Published mobile UI:** Chromium at **390 × 844** exercised Terracotta and Muted Sage selection and reload persistence, black background, and both themed feeding/sleep sheets. Feeding controls measured **60 px** high; Terracotta sleep-start control **52 px**. Screenshots were visually inspected. Standard theme restoration and reload passed. Sleep pause, offline reload, resume and finish passed, including a completed event.
+- **Offline/installability:** all four routes opened offline. A complete browser-process close/relaunch with networking disabled preserved the exact serialized paused diary, original sleep `startedAt`, profile, bottle event and Muted Sage. The public root-scoped worker was activated and controlled the secure page; Chromium installability returned zero errors. No page errors were observed in the recorded acceptance context.
+- **Limits and evidence:** physical-iPhone Add to Home Screen, lifecycle/keyboard/storage eviction, Russian consumer-network availability and real-account synchronization remain unverified. No private user diary or credentials were accessed. Local evidence: `dist/v1.4.0-production-receipt.json`, `dist/v1.4.0-public-object-verification.json`, `dist/v1.4.0-browser-verification.json`; the earlier `dist/v1.4.0-preparation-receipt.json` is historical prepublication evidence, not current status.
+
 
 ### Current local configuration and required hosting decisions
 
@@ -121,15 +218,76 @@ node scripts/publish-pwa.mjs <bucket-without-dots>
 
 `dist/pwa/upload-plan.json` is the authoritative ordered allowlist. Its `file` entries point to local encoded filenames beneath `dist/pwa/files`; its `key` entries are actual S3 keys. This separation permits an extensionless `tabs` object and `tabs/index.html` simultaneously. Do **not** recursively upload `files/` using their local filenames. The preparer validates every SW-listed resource against its generated SHA-1 before staging. It includes only those resources, SW runtime scripts, license notices, and the explicit HTML aliases. A reused staging directory may contain old files; only the current plan is publishable.
 
-The publisher requires a preinstalled **AWS CLI** and an explicitly authorized authenticated environment. Configure authentication privately using the operator's approved mechanism; never print/read credential files or paste keys into this session. Use the Yandex console to create/configure the dedicated Russia bucket, enable website hosting with index `index.html`, and allow public object reads only. Do not set up extra billable services.
+The publisher uses a preinstalled **AWS CLI** (default `--transport=aws`) or **Yandex CLI** (`--transport=yc`) in an explicitly authorized environment. Use the existing configured bucket and approved operator session. Configure any missing authentication privately through the operator's approved mechanism, under a separate authorization; never inspect credential files or paste keys into this session. The publisher does not create infrastructure, configure hosting, expand permissions, or delete objects.
 
-After the operator explicitly approves potentially billable operations:
+Only after the operator explicitly approves potentially billable operations:
 
 ```sh
-node scripts/publish-pwa.mjs <actual-bucket-without-dots> --confirm-billable-operations
+# Existing authenticated Cloud Shell, with this checkout's scripts and pinned public staging:
+node scripts/publish-pwa.mjs lulio --transport=yc --confirm-billable-operations
+# Alternatively, an already authorized AWS CLI environment:
+node scripts/publish-pwa.mjs lulio --transport=aws --confirm-billable-operations
 ```
 
-The script calls `aws --endpoint-url https://storage.yandexcloud.net --region ru-central1 s3api put-object` with STANDARD storage and explicit MIME/cache metadata. It does not create a bucket, change permissions, or delete remote objects. Confirm the actual bucket region in the console; a CLI signing-region argument alone does not provision or prove its location. Each uploaded object is fetched from `https://<bucket>.website.yandexcloud.net/<key>` and verified for HTTP 200, MIME, cache-control, and byte equality before proceeding. `ngsw.json` is last. Stop on errors and apply the matching-release rollback procedure above; uploads are not atomic.
+Both transports use `s3api put-object`, STANDARD storage, and explicit MIME/cache metadata. The AWS endpoint is `https://storage.yandexcloud.net`, signing region `ru-central1`; confirm the bucket's actual region independently. The local dry run validates the entire plan and local resource hashes without network requests or cloud CLI calls. Confirmation is required even for a resume.
+
+The publication protocol is:
+
+1. Capture the current public entrypoint/manifest bytes as hashes and metadata for a concurrency baseline. This is **not a rollback backup**: preserve the complete previous release archive separately before mutation.
+2. For each dependency, compare current public HTTP bytes, MIME, and Cache-Control with the pinned local object. Skip its PUT only on an exact match; a metadata-only mismatch requires repair. Up to four dependency operations run concurrently. A failure stops admission and drains already-running workers before returning; entrypoints remain blocked.
+3. Check all entrypoints and `ngsw.json` against the baseline or the intended release, then process the web manifest, index and route aliases sequentially. Recheck every dependency and entrypoint before publishing `ngsw.json` last.
+4. Perform a fresh final public HTTP verification of **every** object, including skipped objects, before writing a complete receipt. Keep the separate build-machine/public-origin acceptance below; another pass by this publisher is not a second independent client.
+
+GETs have bounded retries and a 30-second request/body timeout; unexpected statuses such as 403 fail closed. The publisher invokes the PUT transport once, with no application-level write retry. Installed AWS/yc versions may have internal retry policies: verify those privately before an authorized cloud run; loopback rehearsal does not validate cloud-client internals. Each attempted write is journaled as uncertain **before** the transport runs. After interruption, `--resume` binds to the same target, transport and complete resource hashes/metadata, and rereads public state rather than trusting a prior "verified" flag or repeating an uncertain PUT blindly:
+
+```sh
+node scripts/publish-pwa.mjs lulio --transport=yc --confirm-billable-operations --resume
+```
+
+Private local operator state is in ignored `dist/pwa-publication/<bucket>.journal.json`, `.receipt.json`, and `.lock`. Successful completion replaces the receipt and removes the journal. Compare a receipt's target and artifact identity, not just its existence. Counters record PUT attempts, exact-match skips and GET attempts (including retries and final checks); elapsed time covers the publisher attempt, not the build or terminal transfer. A stale lock is never stolen automatically. Before manually removing one, positively establish that its owner and all in-flight transport processes have exited and reconcile any uncertain writes. The lock coordinates only this filesystem, **not** other machines or Cloud Shell sessions: retain one deployment owner.
+
+An error leaves the publication incomplete; no automatic rollback is attempted. Use the matching-release rollback procedure above after any entrypoint transition failure. Multiple object writes are **not atomic**, and baseline checks cannot eliminate races with another writer. Retain cached-client chunks, old-tab dependencies and the known rollback archive; never clear diary storage to make recovery pass.
+
+### Local publisher and browser rehearsals
+
+These commands do not authorize cloud access or publication. Run them only in the isolated PWA checkout, not the dirty shared checkout or its live devserver.
+
+```sh
+npm run test:pwa
+node scripts/publish-pwa.mjs lulio
+```
+
+The protocol tests exercise an actual loopback object store, including committed PUT with a lost acknowledgement, worker draining, resume, metadata-only repair, concurrent-manifest rejection, and retention of old objects. `--transport=local --loopback-origin=http://127.0.0.1:<port>` is an explicit HTTP PUT rehearsal transport, not a cloud endpoint override. It requires a compatible disposable local object store; the static browser fixture below intentionally refuses PUT. AWS/yc transports are rejected with loopback origins, and local transport cannot target a public origin.
+
+Use an already installed Playwright package and Chromium; these tools do not install packages or download browsers. Supply the absolute module path when Playwright is cached outside the checkout. `--browser-executable` is optional when the module's bundled browser is already installed.
+
+```sh
+npm run smoke:pwa -- --root dist/pwa --plan dist/pwa/upload-plan.json \
+  --playwright-module /absolute/path/to/playwright \
+  --browser-executable /absolute/path/to/chromium
+```
+
+The smoke starts its own loopback server on an available port and a fresh, exclusively owned persistent Chromium profile. It checks exact/trailing-slash HTML aliases, MIME/cache metadata and real missing-asset 404s; creates only a synthetic profile, bottle entries and sleep timer; exercises both themes/reloads and feeding/sleep sheets; verifies serialized diary equality across an actual offline reload and complete browser-process restart; resumes/finishes sleep and opens all four routes offline. Offline documents must be served by the service worker, with no online fallback. Worker state must be NORMAL, Chromium installability errors empty, and page errors absent.
+
+For a real whole-version update rehearsal, extract the retained **public-only** previous-release archive into a fresh disposable directory and supply its `pwa` directory and upload plan:
+
+```sh
+npm run smoke:pwa -- --root dist/pwa --plan dist/pwa/upload-plan.json \
+  --previous-root /absolute/path/to/extracted-old-release/pwa \
+  --previous-plan /absolute/path/to/extracted-old-release/pwa/upload-plan.json \
+  --playwright-module /absolute/path/to/playwright \
+  --browser-executable /absolute/path/to/chromium
+```
+
+This flow first loads the old release and creates synthetic data, switches the same local origin to the new plan while retaining old hashed objects, then uses the application's **Check for update → Reload** controls. It requires changed main/SW manifests, retained old main bytes and byte-identical serialized diary/profile/running timer. It does not publish anything.
+
+Each run writes atomic JSON checkpoints, step timings, sheet screenshots, final results or failure evidence to a fresh `dist/pwa-smoke-<unique>` directory by default (`--evidence <new-directory>` overrides it). The owned profile is retained there for diagnosis; no existing browser profile is accepted. Action waits are bounded at 10 seconds, navigations at 15 seconds, steps at 60 seconds and the scenario at 300 seconds by default; `--step-timeout-ms` / `--timeout-ms` set the latter bounds. Close sheets explicitly and wait for their controls to disappear; do not replace readiness checks with fixed sleeps or forced clicks.
+
+`npm run serve:pwa -- --root dist/pwa --plan dist/pwa/upload-plan.json` serves the static fixture separately. A fresh `www/` root without a plan is also supported. The server only binds loopback, refuses writes, dotfiles, source paths and escaping symlinks; the plan remains an explicit file allowlist. For an existing loopback fixture, use smoke `--origin http://127.0.0.1:<port>` instead of `--root`. Non-loopback smoke needs both separate user network approval and `--approve-external-origin`; the flag alone is not approval. Local browser traffic is restricted to the chosen origin, and fixture CSP blocks external connections. Never use a private diary or enter real sync credentials.
+
+Local tooling verification on 2026-10-25: actual retained v1.3.0 and v1.4.0 archives produced **39 PUT / 27 exact-match skips**; a repeat produced **0 PUT / 66 skips**, with all bytes/MIME/cache checked, old-only objects retained and `ngsw.json` last. The browser whole-version scenario passed locally with both themed sheets, offline reload/process restart and unchanged synthetic diary. These are local protocol/browser results, **not** measured cloud speedup, another deployment, physical-iPhone acceptance or real-account sync verification.
+
+For the existing Cloud Shell operator surface, establish terminal/receiver readiness before transfer, verify the complete pinned archive checksum, and reacquire readiness after a runtime restart. Accepted `fill`/typing/paste is not proof of receipt or execution. Prefer a supported private file-transfer interface when available; React-internal terminal handles are not a stable production interface. Never extract session credentials to work around an unavailable console.
 
 #### Historical preparation (2026-10-21)
 
