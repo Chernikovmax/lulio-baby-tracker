@@ -1,6 +1,6 @@
 import { DatePipe, registerLocaleData } from '@angular/common';
 import localeRu from '@angular/common/locales/ru';
-import { Component, computed, inject, linkedSignal, signal, viewChild } from '@angular/core';
+import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import {
   IonAlert, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonItemOptions, IonItemSliding, IonList,
   IonItemOption, IonLabel, IonSegment, IonSegmentButton, IonSpinner, IonText,
@@ -19,8 +19,6 @@ import { SleepModalComponent } from '../../shared/components/modals/sleep-modal/
 import { FeedingModalComponent } from '../../shared/components/modals/feeding-modal/feeding-modal.component';
 import { DiaperModalComponent } from '../../shared/components/modals/diaper-modal/diaper-modal.component';
 import { EventTimeModalComponent } from '../../shared/components/modals/event-time-modal/event-time-modal.component';
-import { SleepHistoryEditorComponent } from '../../shared/components/sleep-history-editor.component';
-import { SleepAssistantCardComponent } from '../../shared/components/sleep-assistant-card.component';
 
 type EventFilter = 'all' | 'sleep' | 'food' | 'diaper';
 type FeedRow = { kind: 'event'; event: AnyTrackerEvent } | { kind: 'wake'; seconds: number; beforeId: string };
@@ -39,14 +37,11 @@ const localDayStart = (date: Date): number => new Date(date.getFullYear(), date.
     IonItemSliding, IonItemOptions, IonItemOption, IonLabel, IonSegment, IonSegmentButton,
     IonSpinner, IonText, LiveStatusBannerComponent, QuickActionDockComponent,
     SleepModalComponent, FeedingModalComponent, DiaperModalComponent, EventTimeModalComponent,
-    SleepHistoryEditorComponent, SleepAssistantCardComponent,
   ],
 })
 export class TrackerPage {
   private readonly storage = inject(StorageService);
   private readonly clock = inject(ClockService);
-  private readonly historyEditor = viewChild(SleepHistoryEditorComponent);
-  openWake(): void { this.historyEditor()?.openWake(); }
   readonly todayStart = computed(() => localDayStart(new Date(this.clock.now())));
   readonly selectedDate = linkedSignal<number, number>({
     source: this.todayStart,

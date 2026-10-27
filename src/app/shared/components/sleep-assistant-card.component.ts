@@ -26,7 +26,7 @@ import { WebPreparationReminderService } from '../../core/services/web-preparati
   template: `
     <section aria-labelledby="sleep-assistant-title">
       @let plan = forecasts.forecast();
-      <h2 id="sleep-assistant-title">Помощник сна · {{ stateLabel() }}</h2>
+      <h2 id="sleep-assistant-title">{{ stateLabel() }}</h2>
       @if (preparation(); as prep) {
         <p>Подготовка с {{ time(prep.startedAt) }} · {{ preparationMinutes() }} мин. Таймер сна ещё не запущен.</p>
       } @else if (plan.state === 'ready' || plan.state === 'overdue') {
@@ -37,9 +37,10 @@ import { WebPreparationReminderService } from '../../core/services/web-preparati
         <p>{{ explanation() }}</p>
         @if (plan.state === 'sleeping') { <p>{{ completedPreparationLabel() }}</p> }
       }
-      <p role="status">{{ reminders.supported ? reminders.description() : webReminders.description() }}</p>
+      <p class="disclaimer">Примерный ориентир, не медицинская рекомендация. Учитывайте признаки усталости ребёнка.</p>
       <details>
-        <summary>Основание и ограничения прогноза</summary>
+        <summary>Подробности прогноза и уведомлений</summary>
+        <p role="status">{{ reminders.supported ? reminders.description() : webReminders.description() }}</p>
       @if (plan.anchor) {
         @if (suppressed()) { <p>Для этого цикла напоминание пропущено.</p> }
         @else { <ion-button fill="clear" [disabled]="busy()" (click)="run('skip')">Не напоминать об этом сне</ion-button> }
@@ -61,13 +62,25 @@ import { WebPreparationReminderService } from '../../core/services/web-preparati
           <ion-button fill="outline" [disabled]="busy()" (click)="clarify.emit()">Уточнить пробуждение</ion-button>
         </div>
       } @else if (plan.state === 'unknown') {
-        @if (plan.state === 'unknown') { <ion-button fill="outline" (click)="clarify.emit()">Уточнить пробуждение</ion-button> }
+        <ion-button fill="outline" (click)="clarify.emit()">Уточнить пробуждение</ion-button>
       }
       @if (error()) { <p role="alert">{{ error() }}</p> }
     </section>
   `,
-  styles: `:host { display:block; } section { padding: 8px 16px; background: var(--ion-card-background); border-top: 1px solid var(--ion-color-medium); }
-    h2 { font-size:1rem; margin:4px 0; } p { margin:6px 0; font-size:.9rem; } .actions { display:flex; flex-wrap:wrap; } ion-button { min-height:52px; flex:1; white-space:normal; } summary { min-height:52px; display:flex; align-items:center; cursor:pointer; } details[open] { max-height:30vh; overflow:auto; }`,
+  styles: `
+    :host { display: block; }
+    section { padding: 16px; }
+    h2 { font-size: 1.15rem; margin: 0 0 12px; }
+    p { margin: 10px 0; line-height: 1.5; overflow-wrap: anywhere; }
+    .disclaimer { font-size: .85rem; color: var(--ion-color-medium); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    ion-button { min-height: 52px; flex: 1; white-space: normal; }
+    summary { min-height: 52px; padding-block: 12px; box-sizing: border-box; cursor: pointer; }
+    details { margin-block: 12px; border-block: 1px solid var(--ion-color-step-200, #333); }
+    details p, li { font-size: .9rem; line-height: 1.5; }
+    ul { padding-inline-start: 20px; }
+    li + li { margin-top: 8px; }
+  `,
 })
 export class SleepAssistantCardComponent {
   readonly forecasts = inject(SleepForecastService);

@@ -4,6 +4,10 @@
       <ion-icon aria-hidden="true" name="today-outline" />
       <ion-label>Сегодня</ion-label>
     </ion-tab-button>
+    <button class="assistant-button" type="button" aria-label="Помощник сна" aria-haspopup="dialog" [attr.aria-expanded]="assistantOpen()" (click)="assistantOpen.set(true)">
+      <ion-icon aria-hidden="true" name="time-outline" />
+      <span>Помощник</span>
+    </button>
     <ion-tab-button tab="stats" href="/tabs/stats">
       <ion-icon aria-hidden="true" name="stats-chart-outline" />
       <ion-label>Статистика</ion-label>
@@ -18,3 +22,23 @@
     </ion-tab-button>
   </ion-tab-bar>
 </ion-tabs>
+<ion-modal appRussianSheet aria-label="Помощник сна" [isOpen]="assistantOpen()" [breakpoints]="[0, 0.55, 0.9]" [initialBreakpoint]="0.9" [expandToScroll]="false" (didDismiss)="assistantOpen.set(false)">
+  <ng-template>
+    <ion-header>
+      <ion-toolbar>
+        <ion-title>Помощник сна</ion-title>
+        <ion-button slot="end" fill="clear" (click)="assistantOpen.set(false)">Свернуть</ion-button>
+      </ion-toolbar>
+    </ion-header>
+    <ion-content>
+      @if (storage.isLoading()) {
+        <p class="assistant-message" role="status">Загружаем данные…</p>
+      } @else if (storage.error()) {
+        <p class="assistant-message" role="alert">Не удалось загрузить данные. Перезапустите приложение и попробуйте снова.</p>
+      } @else {
+        <app-sleep-assistant-card (clarify)="historyEditor.openWake()"></app-sleep-assistant-card>
+        <div class="assistant-history"><app-sleep-history-editor #historyEditor></app-sleep-history-editor></div>
+      }
+    </ion-content>
+  </ng-template>
+</ion-modal>
