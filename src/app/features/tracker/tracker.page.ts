@@ -3,14 +3,16 @@ import localeRu from '@angular/common/locales/ru';
 import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import {
   IonAlert, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonItemOptions, IonItemSliding, IonList,
-  IonItemOption, IonLabel, IonSegment, IonSegmentButton, IonSpinner, IonText,
+  IonItemOption, IonLabel, IonRefresher, IonRefresherContent, IonSegment, IonSegmentButton, IonSpinner, IonText,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { calendarOutline, chevronBack, chevronForward, createOutline, trashOutline } from 'ionicons/icons';
+import { calendarOutline, chevronBack, chevronForward, createOutline, refreshOutline, trashOutline } from 'ionicons/icons';
 import type { AnyTrackerEvent, SleepEvent } from '../../core/models/tracker.models';
 import { sleepIntervals } from '../../core/models/tracker.models';
 import { ClockService } from '../../core/services/clock.service';
 import { StorageService } from '../../core/services/storage.service';
+import { SyncService } from '../../core/services/sync.service';
+import { YandexSyncService } from '../../core/services/yandex-sync.service';
 import { DurationFormatPipe } from '../../shared/pipes/duration-format.pipe';
 import type { QuickAction } from '../../shared/components/quick-action-dock/quick-action-dock.component';
 import { LiveStatusBannerComponent } from '../../shared/components/live-status-banner/live-status-banner.component';
@@ -35,13 +37,18 @@ const localDayStart = (date: Date): number => new Date(date.getFullYear(), date.
   imports: [
     DatePipe, DurationFormatPipe, IonAlert, IonButton, IonContent, IonFooter, IonIcon, IonItem, IonList,
     IonItemSliding, IonItemOptions, IonItemOption, IonLabel, IonSegment, IonSegmentButton,
-    IonSpinner, IonText, LiveStatusBannerComponent, QuickActionDockComponent,
+    IonRefresher, IonRefresherContent, IonSpinner, IonText, LiveStatusBannerComponent, QuickActionDockComponent,
     SleepModalComponent, FeedingModalComponent, DiaperModalComponent, EventTimeModalComponent,
   ],
 })
 export class TrackerPage {
   private readonly storage = inject(StorageService);
   private readonly clock = inject(ClockService);
+  private readonly sync = inject(SyncService);
+  private readonly yandex = inject(YandexSyncService);
+  readonly refreshing = signal(false);
+  readonly refreshMessage = signal('');
+  readonly refreshError = signal(false);
   readonly todayStart = computed(() => localDayStart(new Date(this.clock.now())));
   readonly selectedDate = linkedSignal<number, number>({
     source: this.todayStart,
@@ -145,7 +152,36 @@ export class TrackerPage {
 
   constructor() {
     registerLocaleData(localeRu);
-    addIcons({ calendarOutline, chevronBack, chevronForward, createOutline, trashOutline });
+    addIcons({ calendarOutline, chevronBack, chevronForward, createOutline, refreshOutline, trashOutline });
+  }
+
+  async refreshDiary(refresher?: { complete(): void }): Promise<void> {
+    if (this.refreshing()) { refresher?.complete(); return; }
+    this.refreshing.set(true);
+    this.refreshError.set(false);
+    this.refreshMessage.set('Отправляем и получаем изменения…');
+    try {
+      await this.sync.ready();
+      await this.yandex.ready();
+      await this.storage.whenIdle();
+      if (this.yandex.config().enabled) {
+        await this.yandex.synchronize();
+        if (this.yandex.busy()) throw new Error('Настройки Яндекс Диска меняются. Повторите обновление после завершения.');
+        if (this.yandex.error()) throw new Error(this.yandex.error());
+        this.refreshMessage.set(this.yandex.status());
+      } else if (this.sync.config().enabled) {
+        await this.sync.synchronizeNow();
+        this.refreshMessage.set('Дневник обновлён: локальные изменения отправлены, доступные семейные изменения получены.');
+      } else {
+        this.refreshMessage.set('Синхронизация выключена. Подключите семейный обмен в профиле.');
+      }
+    } catch (error) {
+      this.refreshError.set(true);
+      this.refreshMessage.set(error instanceof Error ? error.message : 'Не удалось обновить дневник. Локальные записи сохранены.');
+    } finally {
+      this.refreshing.set(false);
+      refresher?.complete();
+    }
   }
 
   goToday(): void { this.selectedDate.set(this.todayStart()); }

@@ -243,6 +243,29 @@ describe('Ручной обмен через семейную папку', () =>
     expect(peer.storage.events()).toEqual([{ ...bottle, volumeMl: 150 }]);
   });
 
+  it('повторный запрос обновления ждёт подтверждения уже выполняющейся отправки', async () => {
+    const parent = await device();
+    await parent.run(() => parent.sync.connect(settings));
+    await parent.run(() => parent.storage.saveEvent(bottle));
+    let release!: () => void;
+    const upload = new Promise<void>(resolve => { release = resolve; });
+    let uploading = false;
+    afterUpload = async () => { uploading = true; await upload; };
+    const first = parent.run(() => parent.sync.synchronize());
+    await vi.waitFor(() => { expect(uploading).toBe(true); });
+    let completed = false;
+    const second = parent.run(() => parent.sync.synchronize()).then(() => { completed = true; });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    expect(parent.sync.pending()).toBe(true);
+    release();
+    await Promise.all([first, second]);
+    expect(parent.sync.pending()).toBe(false);
+    expect(parent.sync.busy()).toBe(false);
+    expect(parent.sync.error()).toBe('');
+  });
+
   it('при повторном подключении заново созданной папки публикует историю, а не использует старое подтверждение', async () => {
     const parent = await device();
     await parent.run(() => parent.sync.connect(settings));

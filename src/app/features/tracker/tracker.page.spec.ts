@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiaperEvent } from '../../core/models/tracker.models';
 import { ClockService } from '../../core/services/clock.service';
 import { StorageService } from '../../core/services/storage.service';
+import { SyncService } from '../../core/services/sync.service';
+import { YandexSyncService } from '../../core/services/yandex-sync.service';
 import { TrackerPage } from './tracker.page';
 
 const localDate = (day: number, hour = 12) => new Date(2026, 9, day, hour);
@@ -14,7 +16,7 @@ function setup(birthDate = '2026-06-17') {
     providers: [{ provide: StorageService, useValue: {
       profile: signal({ id: 'baby', name: 'Малыш', birthDate, dueDate: '2026-06-15', gender: 'boy' }),
       events: signal([]), isLoading: signal(false), error: signal(null),
-    } }],
+    } }, { provide: SyncService, useValue: {} }, { provide: YandexSyncService, useValue: {} }],
   });
   const page = TestBed.runInInjectionContext(() => new TrackerPage());
   return { page, clock: TestBed.inject(ClockService) };

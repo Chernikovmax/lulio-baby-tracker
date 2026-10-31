@@ -15,7 +15,7 @@ interface Connection {
   scope: string;
   familyId: string;
   connected: boolean;
-  running: boolean;
+  running: Promise<void> | null;
   requested: boolean;
 }
 
@@ -35,7 +35,7 @@ export class SyncService {
   readonly status = signal('Синхронизация выключена');
   readonly error = signal<string | null>(null);
   private connection: Connection | null = null;
-  private connecting = false;
+  private connecting: Promise<void> | null = null;
   private generation = 0;
   private configWrites: Promise<void> = Promise.resolve();
 
@@ -89,6 +89,22 @@ export class SyncService {
     }
   }
 
+  /** Await the exchange and its durable merge, not just a Realtime notification. */
+  async synchronizeNow(): Promise<void> {
+    await this.ready();
+    await this.configWrites;
+    await this.storage.whenIdle();
+    if (!this.config().enabled) throw new Error('Синхронизация выключена. Подключите семейный обмен в профиле.');
+    if (document.visibilityState === 'hidden') throw new Error('Вернитесь в приложение и повторите обновление.');
+    if (this.connecting) await this.connecting;
+    if (!this.connection) await this.connect(this.config());
+    const connection = this.connection;
+    if (!connection) throw new Error(this.error() ?? 'Не удалось подключиться к семье.');
+    await this.requestSync();
+    if (this.connection !== connection) throw new Error('Подключение изменилось. Повторите обновление.');
+    if (this.error()) throw new Error(this.error()!);
+  }
+
   saveConfig(config: SyncConfig): Promise<void> {
     const operation = this.configWrites.then(async () => {
       await this.initialRead.catch(() => undefined);
@@ -131,15 +147,20 @@ export class SyncService {
     connection.client.auth.dispose();
   }
 
-  private async connect(config: SyncConfig): Promise<void> {
+  private connect(config: SyncConfig): Promise<void> {
+    const attempt = this.openConnection(config);
+    this.connecting = attempt;
+    void attempt.then(() => { if (this.connecting === attempt) this.connecting = null; });
+    return attempt;
+  }
+
+  private async openConnection(config: SyncConfig): Promise<void> {
     const generation = ++this.generation;
     this.disconnect();
-    this.connecting = false;
     this.error.set(null);
     if (!config.enabled) { this.status.set('Синхронизация выключена'); return; }
     if (document.visibilityState === 'hidden') return;
     this.status.set('Подключение к семье…');
-    this.connecting = true;
     let client: SupabaseClient | undefined;
     try {
       await this.assertYandexDisabled();
@@ -163,7 +184,7 @@ export class SyncService {
       const { error: joinError } = await client.rpc('join_tracker_family', { target_family: resolved.familyId });
       if (joinError) throw joinError;
       if (generation !== this.generation) { client.auth.dispose(); return; }
-      const connection: Connection = { client, scope, familyId: resolved.familyId, connected: true, running: false, requested: false };
+      const connection: Connection = { client, scope, familyId: resolved.familyId, connected: true, running: null, requested: false };
       this.connection = connection;
       connection.channel = client.channel(`family:${resolved.familyId}`, {
         config: { postgres_changes_options: { wait: true } },
@@ -190,20 +211,18 @@ export class SyncService {
       this.connection = null;
       this.error.set('Не удалось подключиться. Проверьте настройки, схему базы и анонимный вход Supabase.');
       this.status.set('Нет связи. Локальные изменения сохранены и будут отправлены после подключения.');
-    } finally {
-      if (generation === this.generation) this.connecting = false;
     }
   }
 
-  private requestSync(): void {
+  private requestSync(): Promise<void> {
     const connection = this.connection;
-    if (!connection?.connected || document.visibilityState === 'hidden') return;
+    if (!connection?.connected || document.visibilityState === 'hidden') return Promise.resolve();
     connection.requested = true;
-    if (!connection.running) void this.synchronize(connection);
+    connection.running ??= Promise.resolve().then(() => this.synchronize(connection));
+    return connection.running;
   }
 
   private async synchronize(connection: Connection): Promise<void> {
-    connection.running = true;
     try {
       while (connection.requested && this.connection === connection && document.visibilityState !== 'hidden') {
         connection.requested = false;
@@ -224,7 +243,7 @@ export class SyncService {
       this.error.set('Не удалось синхронизировать. Изменения сохранены на устройстве; повторим автоматически.');
       this.status.set('Ожидание сети');
     } finally {
-      connection.running = false;
+      connection.running = null;
     }
   }
 

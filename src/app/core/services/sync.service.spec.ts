@@ -27,6 +27,7 @@ describe('Экономный обмен Supabase', () => {
   let disposed: number;
   let notify: (payload: { new: { version: number } }) => void;
   let calls: ExchangeArgs[];
+  let exchangeGate: Promise<void> | null;
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -36,6 +37,7 @@ describe('Экономный обмен Supabase', () => {
     await Preferences.remove({ key: 'baby-tracker.yandex.v1' });
     visible = true; failExchange = false; failJoin = false; response = { version: 1, entries: {} }; calls = [];
     created = 0; disposed = 0;
+    exchangeGate = null;
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visible ? 'visible' : 'hidden');
     const channel = {
       on: (_event: string, _filter: unknown, callback: typeof notify) => { notify = callback; return channel; },
@@ -49,6 +51,7 @@ describe('Экономный обмен Supabase', () => {
         if (name === 'join_tracker_family') return { data: null, error: failJoin ? new Error('offline') : null };
         if (name !== 'exchange_tracker_family') throw new Error(`Unexpected RPC: ${name}`);
         calls.push(structuredClone(args));
+        if (exchangeGate) await exchangeGate;
         return failExchange ? { data: null, error: new Error('offline') } : { data: structuredClone(response), error: null };
       },
     };
@@ -192,6 +195,48 @@ describe('Экономный обмен Supabase', () => {
     expect(calls[0].incoming['event:bottle'].value).toEqual(bottle);
     expect(storage.supabaseCheckpoint()!.pending).toEqual({});
     expect(sync.error()).toBeNull();
+  });
+
+  it('ручное обновление ждёт текущего обмена и отправки правки, сделанной во время запроса', async () => {
+    await connect();
+    failExchange = true;
+    await storage.saveEvent(bottle);
+    await settle();
+    failExchange = false;
+    const peer = { ...bottle, id: 'peer', volumeMl: 30 };
+    response = { version: 2, entries: { 'event:peer': {
+      revision: Date.now() + 1000, device: 'ffffffff-ffff-4fff-bfff-ffffffffffff', value: peer,
+    } } };
+    // The project's ES2022 library does not expose Promise.withResolvers.
+    let release!: () => void;
+    exchangeGate = new Promise<void>(resolve => { release = resolve; });
+    calls = [];
+    let completed = false;
+    const refresh = sync.synchronizeNow().then(() => { completed = true; });
+    await settle();
+    expect(completed).toBe(false);
+    expect(storage.events()).toEqual([bottle]);
+    await storage.saveEvent({ ...bottle, volumeMl: 120 });
+    TestBed.tick();
+    const secondRefresh = sync.synchronizeNow();
+    release();
+    await Promise.all([refresh, secondRefresh]);
+    expect(storage.events()).toEqual(expect.arrayContaining([peer, { ...bottle, volumeMl: 120 }]));
+    expect(storage.supabaseCheckpoint()!.pending).toEqual({});
+    expect(storage.supabaseCheckpoint()!.version).toBe(2);
+    expect(sync.error()).toBeNull();
+  });
+
+  it('ручное обновление сообщает об ошибке, сохраняя неотправленные записи, и повторяет обмен без ожидания таймера', async () => {
+    await connect();
+    failExchange = true;
+    await storage.saveEvent(bottle);
+    await expect(sync.synchronizeNow()).rejects.toThrow('Не удалось синхронизировать');
+    expect(storage.supabaseCheckpoint()!.pending['event:bottle'].value).toEqual(bottle);
+    failExchange = false;
+    await sync.synchronizeNow();
+    expect(storage.supabaseCheckpoint()!.pending).toEqual({});
+    expect(storage.events()).toEqual([bottle]);
   });
 
   it('освобождает клиента Supabase после каждой неудачной попытки подключения', async () => {

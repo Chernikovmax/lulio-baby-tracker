@@ -27,6 +27,7 @@ export class YandexSyncService {
   readonly busy = signal(false);
   readonly status = signal('');
   readonly error = signal('');
+  private exchange: Promise<void> | null = null;
   readonly pending = computed(() => this.config().enabled &&
     journalSignature(this.storage.syncDocument()) !== this.config().published);
 
@@ -88,8 +89,16 @@ export class YandexSyncService {
     finally { this.busy.set(false); }
   }
 
-  async synchronize(): Promise<void> {
-    if (this.busy()) return;
+  synchronize(): Promise<void> {
+    if (this.exchange) return this.exchange;
+    if (this.busy()) return Promise.resolve();
+    const exchange = this.exchangeOnce();
+    this.exchange = exchange;
+    void exchange.then(() => { if (this.exchange === exchange) this.exchange = null; });
+    return exchange;
+  }
+
+  private async exchangeOnce(): Promise<void> {
     this.busy.set(true); this.error.set(''); this.status.set('Получаем семейные изменения…');
     try {
       await this.ready();

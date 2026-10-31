@@ -1,4 +1,7 @@
 <ion-content [fullscreen]="true">
+  <ion-refresher slot="fixed" [disabled]="isLoading() || !!storageError()" (ionRefresh)="refreshDiary($event.detail)">
+    <ion-refresher-content pullingIcon="refresh-outline" pullingText="Потяните для обмена" refreshingSpinner="crescent" refreshingText="Обновляем дневник…"></ion-refresher-content>
+  </ion-refresher>
   <main class="tracker">
     <header class="tracker-header">
       <div class="date-switcher">
@@ -16,6 +19,15 @@
         <p class="baby-line">{{ baby.name }}@if (babyAge()) { <span> · {{ babyAge() }}</span> }</p>
       }
     </header>
+    <div class="sync-refresh">
+      <ion-button fill="clear" [disabled]="refreshing() || isLoading() || !!storageError()" (click)="refreshDiary()" aria-label="Обновить семейный дневник">
+        @if (refreshing()) { <ion-spinner slot="start" name="crescent"></ion-spinner> }
+        @else { <ion-icon slot="start" name="refresh-outline" aria-hidden="true"></ion-icon> }
+        Обновить
+      </ion-button>
+      <small>Или потяните экран вниз</small>
+    </div>
+    <p class="sync-status" role="status" aria-live="polite" [class.error]="refreshError()">{{ refreshMessage() }}</p>
 
     @if (isLoading()) {
       <section class="state-card" role="status"><ion-spinner name="crescent"></ion-spinner><p>Загружаем записи…</p></section>

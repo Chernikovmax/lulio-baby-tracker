@@ -7,6 +7,11 @@ h1, h2 { font-size: 1.1rem; margin: 4px 0; }
 .eyebrow, .baby-line, small { color: var(--tracker-muted); }
 .today-button { display: flex; margin: auto; }
 .baby-line { text-align: center; }
+.sync-refresh { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; }
+.sync-refresh ion-button { min-height: 44px; }
+.sync-refresh ion-spinner { width: 20px; height: 20px; }
+.sync-status { text-align: center; font-size: .85rem; }
+.sync-status:empty { display: none; }
 .summary-section { margin: 16px -16px; }
 .summary-strip { display: flex; gap: 10px; overflow-x: auto; padding: 8px 16px; }
 .summary-item { display: flex; gap: 6px; white-space: nowrap; background: var(--ion-card-background); padding: 10px; border-radius: 12px; font-size: .8rem; }
