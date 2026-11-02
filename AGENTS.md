@@ -4,6 +4,14 @@
 
 All agent instructions MUST be written in English.
 
+## Git Commit Convention
+
+This project does not use tickets. Always commit without a ticket identifier, regardless of the branch name. Do not ask for a ticket or add a ticket prefix.
+
+Write commit messages in English using the subject format `[TAG] Description`. Use one or more of `[MOD]`, `[ADD]`, `[DEL]`, `[UPDATE]`, `[RELEASE]`, or `[FIX]`, followed by a concrete imperative description without a trailing period. Example: `[FIX] Attribute the full night to the following day`.
+
+No `Story:` trailer is required. Do not add ticket-based trailers. This project-specific convention replaces the shared ticket-based commit convention for this repository.
+
 ## 1. Technology Stack &amp; Environment
 
 \* **Runtime:** Node.js compatible with the installed Angular packages' `engines.node` (`^22.22.3 || ^24.15.0 || >=26.0.0` for Angular 22.2.3). TypeScript must satisfy the installed Angular compiler's peer dependency range; the current project uses TypeScript 6.0.x.

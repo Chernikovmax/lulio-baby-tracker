@@ -90,18 +90,39 @@ export class TrackerPage {
     if (months > 0) return `${months} мес. ${days} дн.`;
     return `${Math.max(0, days)} дн.`;
   });
-  private readonly dayBounds = computed(() => {
-    const start = this.selectedDate();
-    const day = new Date(start);
-    return { start, end: new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime() };
+  private readonly summarySleeps = computed(() => {
+    const sleeps = this.storage.events().filter((event): event is SleepEvent => event.type === 'sleep');
+    const timer = this.storage.activeTimers().sleepTimer;
+    if (!timer) return sleeps;
+    return [...sleeps, {
+      id: timer.id ?? 'active-sleep', type: 'sleep' as const, startTime: timer.startedAt,
+      endTime: timer.pausedAt ?? new Date(this.clock.now()).toISOString(),
+      updatedAt: timer.startedAt, isNightSleep: timer.isNightSleep, pauses: timer.pauses,
+    }];
   });
-  readonly dayEvents = computed(() => {
-    const { start, end } = this.dayBounds();
-    return [...this.storage.events()]
-      .filter(event => event.type === 'sleep'
-        ? eventTime(event) < end && eventEnd(event) > start
-        : eventTime(event) >= start && eventTime(event) < end)
-      .sort((a, b) => eventTime(a) - eventTime(b) || a.id.localeCompare(b.id));
+  readonly summaryPeriod = computed(() => {
+    const day = new Date(this.selectedDate());
+    // A night belongs to the date of the noon that follows its first sleep.
+    // Construct local dates (not 24-hour offsets) to preserve DST boundaries.
+    const previousNoon = new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1, 12).getTime();
+    const noon = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12).getTime();
+    const nextNoon = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 12).getTime();
+    const nextMidnight = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
+    const now = this.clock.now();
+    let firstNight = Infinity;
+    let nextNight = Infinity;
+    for (const sleep of this.summarySleeps()) {
+      const start = eventTime(sleep);
+      if (!sleep.isNightSleep || start > now) continue;
+      if (start >= previousNoon && start < noon) firstNight = Math.min(firstNight, start);
+      if (start >= noon && start < nextNoon) nextNight = Math.min(nextNight, start);
+    }
+    const end = Number.isFinite(nextNight) ? nextNight : nextMidnight;
+    return {
+      start: Number.isFinite(firstNight) ? firstNight : this.selectedDate(),
+      end, observedEnd: Math.min(end, now),
+      nightKnown: Number.isFinite(firstNight),
+    };
   });
   readonly visibleEvents = computed(() => {
     const filter = this.filter();
@@ -136,17 +157,19 @@ export class TrackerPage {
     return rows;
   });
   readonly summary = computed(() => {
-    const { start, end } = this.dayBounds();
-    const events = this.storage.events();
-    const sleeps = events.filter((event): event is SleepEvent => event.type === 'sleep');
-    const daytime = this.sleepTotal(sleeps, start, end, false);
-    const nighttime = this.sleepTotal(sleeps, start, end, true);
-    const dayEvents = this.dayEvents();
+    const { start, end, observedEnd } = this.summaryPeriod();
+    const sleeps = this.summarySleeps();
+    const daytime = this.sleepTotal(sleeps, start, observedEnd, false);
+    const nighttime = this.sleepTotal(sleeps, start, observedEnd, true);
+    const events = this.storage.events().filter(event => eventTime(event) >= start && eventTime(event) < end && eventTime(event) <= observedEnd);
+    const breast = this.storage.activeTimers().breastTimer;
+    const activeFeeding = breast !== null && Date.parse(breast.startedAt) >= start &&
+      Date.parse(breast.startedAt) < end && Date.parse(breast.startedAt) <= observedEnd;
     return {
       daytime, nighttime,
-      feedings: dayEvents.filter(event => ['breastfeeding', 'bottle', 'solids'].includes(event.type)).length,
-      bottleMl: dayEvents.reduce((sum, event) => sum + (event.type === 'bottle' ? event.volumeMl : 0), 0),
-      diapers: dayEvents.filter(event => event.type === 'diaper').length,
+      feedings: events.filter(event => ['breastfeeding', 'bottle', 'solids'].includes(event.type)).length + Number(activeFeeding),
+      bottleMl: events.reduce((sum, event) => sum + (event.type === 'bottle' ? event.volumeMl : 0), 0),
+      diapers: events.filter(event => event.type === 'diaper').length,
     };
   });
 

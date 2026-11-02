@@ -13,6 +13,7 @@ h1, h2 { font-size: 1.1rem; margin: 4px 0; }
 .sync-status { text-align: center; font-size: .85rem; }
 .sync-status:empty { display: none; }
 .summary-section { margin: 16px -16px; }
+.summary-heading { display: grid; gap: 4px; padding: 0 16px; }
 .summary-strip { display: flex; gap: 10px; overflow-x: auto; padding: 8px 16px; }
 .summary-item { display: flex; gap: 6px; white-space: nowrap; background: var(--ion-card-background); padding: 10px; border-radius: 12px; font-size: .8rem; }
 .feed-section { margin-top: 20px; }

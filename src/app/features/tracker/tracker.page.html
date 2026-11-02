@@ -36,7 +36,19 @@
     } @else {
       <app-live-status-banner></app-live-status-banner>
 
-      <section class="summary-section" aria-label="Итоги дня">
+      <section class="summary-section" aria-label="Итоги ночи и дня">
+        <div class="summary-heading">
+          <h2>Ночь и день</h2>
+          @if (summaryPeriod().observedEnd >= summaryPeriod().start) {
+            <small>{{ summaryPeriod().start | date:'dd.MM HH:mm' }} — {{ summaryPeriod().observedEnd | date:'dd.MM HH:mm' }}</small>
+          } @else {
+            <small>Период ещё не начался</small>
+          }
+          <small>Ночь относится к следующему дню. Новая ночь — в итогах следующей даты.</small>
+          @if (!summaryPeriod().nightKnown) {
+            <small>Начало ночи не записано: считаем с 00:00 выбранного дня.</small>
+          }
+        </div>
         <div class="summary-strip">
           <div class="summary-item"><span>☀️ Сон днём</span><strong>{{ summary().daytime | durationFormat:'human' }}</strong></div>
           <div class="summary-item"><span>🌙 Сон ночью</span><strong>{{ summary().nighttime | durationFormat:'human' }}</strong></div>
