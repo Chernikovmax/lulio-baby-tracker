@@ -14,3 +14,15 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+
+// Web Locks are available in supported secure-context browsers, but not jsdom.
+if (!navigator.locks) {
+  const queues = new Map<string, Promise<unknown>>();
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: {
+    request: <T>(name: string, callback: (lock: Lock) => T | PromiseLike<T>): Promise<T> => {
+      const result = (queues.get(name) ?? Promise.resolve()).then(() => callback({ name, mode: 'exclusive' }));
+      queues.set(name, result.catch(() => undefined));
+      return result;
+    },
+  } });
+}

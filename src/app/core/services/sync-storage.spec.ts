@@ -1,8 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { Preferences } from '@capacitor/preferences';
+import { Capacitor } from '@capacitor/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageService } from './storage.service';
 import type { SyncDocument } from '../models/sync.models';
+
+vi.mock('@baby-tracker/timer-notification', () => ({
+  TimerNotification: { preparationInvalidate: vi.fn(async () => undefined) },
+}));
 
 const scope = 'https://example.supabase.co/11111111-1111-4111-8111-111111111111';
 const feeding = { id: 'bottle', type: 'bottle' as const, content: 'formula' as const, volumeMl: 90, startTime: '2026-10-20T12:00:00Z', updatedAt: '2026-10-20T12:00:00Z' };
@@ -20,6 +25,57 @@ describe('Устойчивое семейное хранилище', () => {
     await Preferences.remove({ key: 'baby-tracker.v1' });
   });
   afterEach(() => { TestBed.resetTestingModule(); vi.restoreAllMocks(); });
+
+  it.each(['save', 'sync'] as const)('не теряет подгузники и исходящую очередь при %s из устаревшего окна PWA', async action => {
+    const first = await device();
+    await first.configureSupabaseSync(scope);
+    const second = await device();
+    const diaper = { id: 'diaper', type: 'diaper' as const, state: 'wet' as const,
+      startTime: '2026-10-20T12:00:00Z', updatedAt: '2026-10-20T12:00:00Z' };
+    await first.saveEvent(diaper);
+    // The other window still has the snapshot from before the diaper was saved.
+    if (action === 'save') await second.saveEvent(feeding);
+    else await second.mergeSupabase(scope, 0, {}, { version: 1, entries: {
+      'event:bottle': { revision: 1, device: crypto.randomUUID(), value: feeding },
+    } });
+    const persisted = TestBed.runInInjectionContext(() => new StorageService());
+    await persisted.ready();
+    expect(persisted.events()).toEqual(expect.arrayContaining([diaper, feeding]));
+    expect(persisted.supabaseCheckpoint()!.pending['event:diaper'].value).toEqual(diaper);
+  });
+
+  it.each(['web', 'android'])('сохраняет подгузник во время запоздалого ответа и после перезапуска на %s', async platform => {
+    vi.spyOn(Capacitor, 'getPlatform').mockReturnValue(platform);
+    const storage = await device();
+    await storage.configureSupabaseSync(scope);
+    const sent = structuredClone(storage.supabaseCheckpoint()!.pending);
+    const diaper = { id: 'diaper', type: 'diaper' as const, state: 'dirty' as const,
+      startTime: '2026-10-20T12:00:00Z', updatedAt: '2026-10-20T12:00:00Z' };
+    await storage.saveEvent(diaper);
+    await storage.mergeSupabase(scope, 0, sent, { version: 1, entries: {
+      'event:bottle': { revision: 1, device: crypto.randomUUID(), value: feeding },
+    } });
+    const restarted = TestBed.runInInjectionContext(() => new StorageService());
+    await restarted.ready();
+    expect(restarted.events()).toEqual(expect.arrayContaining([diaper, feeding]));
+    expect(restarted.supabaseCheckpoint()!.pending['event:diaper'].value).toEqual(diaper);
+  });
+
+  it('сохраняет параллельные записи окон и не воскрешает удалённый подгузник устаревшим окном', async () => {
+    const first = await device(), second = await device();
+    const diaper = { id: 'diaper', type: 'diaper' as const, state: 'mixed' as const,
+      startTime: '2026-10-20T12:00:00Z', updatedAt: '2026-10-20T12:00:00Z' };
+    await Promise.all([first.saveEvent(diaper), second.saveEvent(feeding)]);
+    const persisted = TestBed.runInInjectionContext(() => new StorageService());
+    await persisted.ready();
+    expect(persisted.events()).toEqual(expect.arrayContaining([diaper, feeding]));
+    await first.deleteEvent(diaper.id);
+    await second.saveEvent({ ...feeding, volumeMl: 120 });
+    const restarted = TestBed.runInInjectionContext(() => new StorageService());
+    await restarted.ready();
+    expect(restarted.events()).toEqual([{ ...feeding, volumeMl: 120 }]);
+    expect(restarted.syncDocument()!.entries['event:diaper'].value).toBeNull();
+  });
 
   it('объединяет независимые изменения, передаёт удаление и не воскрешает устаревшую запись', async () => {
     const first = await device();

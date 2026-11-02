@@ -1,4 +1,5 @@
-import { Service, computed, resource, signal } from '@angular/core';
+import { DestroyRef, Service, computed, inject, resource, signal } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import {
   ActiveTimerState, AnyTrackerEvent, BabyProfile, TrackerBackup, TrackerData,
@@ -31,7 +32,10 @@ const EMPTY_DATA: TrackerData = {
 export class StorageService {
   // Один снимок: завершение таймера и добавление события сохраняются атомарно.
   private readonly device = crypto.randomUUID();
-  private readonly initialRead = Preferences.get({ key: STORAGE_KEY }).then<StoredData>(async ({ value }) => {
+  private readonly web = Capacitor.getPlatform() === 'web';
+  private readonly initialRead = this.withDiaryLock(() => this.readStoredData(true));
+  private async readStoredData(migrate = false): Promise<StoredData> {
+    const { value } = await Preferences.get({ key: STORAGE_KEY });
     if (value === null) return structuredClone(EMPTY_DATA);
     let parsed: unknown;
     try { parsed = JSON.parse(value); } catch { throw new Error('Не удалось прочитать сохранённые данные.'); }
@@ -41,6 +45,7 @@ export class StorageService {
       !('sync' in parsed) || (parsed.sync as SyncDocument).scope !== parsed.supabase.scope)) {
       throw new Error('Повреждён курсор синхронизации.');
     }
+    if (!migrate) return parsed as StoredData;
     const migrated: StoredData = { ...parsed, sleepRoutine: parsed.sleepRoutine ?? null,
       confirmedWakes: parsed.confirmedWakes ?? [], historyAssertions: parsed.historyAssertions ?? [],
       sleepPreparations: parsed.sleepPreparations ?? [], sleepCycleSuppressions: parsed.sleepCycleSuppressions ?? [] };
@@ -60,11 +65,12 @@ export class StorageService {
     }
     if (JSON.stringify(migrated) !== value) await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(migrated) });
     return migrated;
-  });
+  }
   private readonly dataResource = resource({ loader: () => this.initialRead });
   private writes: Promise<void> = Promise.resolve();
   readonly isLoading = this.dataResource.isLoading;
-  readonly error = this.dataResource.error;
+  private readonly refreshError = signal<unknown>(undefined);
+  readonly error = computed(() => this.refreshError() ?? this.dataResource.error());
   readonly profile = computed(() => this.dataResource.hasValue() ? this.dataResource.value().profile : null);
   readonly events = computed<readonly AnyTrackerEvent[]>(() => this.dataResource.hasValue() ? this.dataResource.value().events : []);
   readonly activeTimers = computed<ActiveTimerState>(() => this.dataResource.hasValue() ? this.dataResource.value().activeTimers : EMPTY_DATA.activeTimers);
@@ -79,6 +85,34 @@ export class StorageService {
   readonly reminderGeneration = signal(0);
   readonly syncDocument = computed(() => this.dataResource.hasValue() ? this.dataResource.value().sync ?? null : null);
   readonly supabaseCheckpoint = computed(() => this.dataResource.hasValue() ? this.dataResource.value().supabase ?? null : null);
+
+  constructor() {
+    if (!this.web) return;
+    const refresh = () => {
+      void this.commit(data => data).then(
+        () => this.refreshError.set(undefined),
+        error => this.refreshError.set(error),
+      );
+    };
+    const storage = (event: StorageEvent) => {
+      if (event.storageArea === localStorage && (event.key === null || event.key === `CapacitorStorage.${STORAGE_KEY}`)) refresh();
+    };
+    const visible = () => { if (document.visibilityState !== 'hidden') refresh(); };
+    window.addEventListener('storage', storage);
+    window.addEventListener('pageshow', visible);
+    document.addEventListener('visibilitychange', visible);
+    inject(DestroyRef).onDestroy(() => {
+      window.removeEventListener('storage', storage);
+      window.removeEventListener('pageshow', visible);
+      document.removeEventListener('visibilitychange', visible);
+    });
+  }
+
+  private withDiaryLock<T>(operation: () => Promise<T>): Promise<T> {
+    if (!this.web) return operation();
+    if (!navigator.locks) return Promise.reject(new Error('Для безопасного сохранения дневника откройте приложение по HTTPS в поддерживаемом браузере.'));
+    return navigator.locks.request(STORAGE_KEY, operation);
+  }
 
   async ready(): Promise<void> {
     const initial = await this.initialRead;
@@ -146,19 +180,24 @@ export class StorageService {
   private commit(transform: (data: StoredData) => StoredData): Promise<void> {
     const operation = this.writes.then(async () => {
       await this.ready();
-      const next = transform(structuredClone(this.dataResource.value()!));
-      if (!isTrackerData(next)) throw new Error('Невозможно сохранить некорректные данные.');
-      const snapshot = JSON.stringify(next);
-      if (snapshot === JSON.stringify(this.dataResource.value())) return;
-      if (androidPreparationSupported()) {
-        // Cancel and durably fence before the diary commit. A crash between stores misses
-        // a reminder rather than publishing a superseded plan while JavaScript is closed.
-        await preparationNative.preparationInvalidate();
-      }
-      fenceWebReminderDiary();
-      this.reminderGeneration.update(value => value + 1);
-      await Preferences.set({ key: STORAGE_KEY, value: snapshot });
-      this.dataResource.value.set(JSON.parse(snapshot) as StoredData);
+      return this.withDiaryLock(async () => {
+        // PWA windows share Preferences, not their in-memory resource or write queue.
+        const current = this.web ? await this.readStoredData() : this.dataResource.value()!;
+        if (JSON.stringify(current) !== JSON.stringify(this.dataResource.value())) this.dataResource.value.set(current);
+        const next = transform(structuredClone(current));
+        if (!isTrackerData(next)) throw new Error('Невозможно сохранить некорректные данные.');
+        const snapshot = JSON.stringify(next);
+        if (snapshot === JSON.stringify(current)) return;
+        if (androidPreparationSupported()) {
+          // Cancel and durably fence before the diary commit. A crash between stores misses
+          // a reminder rather than publishing a superseded plan while JavaScript is closed.
+          await preparationNative.preparationInvalidate();
+        }
+        fenceWebReminderDiary();
+        this.reminderGeneration.update(value => value + 1);
+        await Preferences.set({ key: STORAGE_KEY, value: snapshot });
+        this.dataResource.value.set(JSON.parse(snapshot) as StoredData);
+      });
     });
     this.writes = operation.catch(() => undefined);
     return operation;
