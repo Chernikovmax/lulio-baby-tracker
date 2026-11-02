@@ -109,6 +109,12 @@ Limits: preflight is not an Android native build/signature/install/update test, 
 
 Published v1.4.0 CI [40173809891](https://github.com/Chernikovmax/lulio-baby-tracker/actions/runs/40173809891) reported build job **3m9s**, Gradle assembleRelease **130s**, tests **17s**, npm ci **9s**, web build **7s**, signing/verification **1s**, publication **4s**, release job **24s**. This is historical evidence, not a controlled cold/warm comparison for the new cache. Record new unsigned PR/branch run URLs, cache hit/miss state and actual durations separately; no speedup is promised without comparable observations.
 
+### Android/PWA 1.7.2 release recovery (2026-11-02)
+
+- Initial source **`64e14c20975fb76ef2e593d723f78a0148a144ad`**, tag **`v1.7.1`**, passed local checks but failed the UTC [Android CI run 41451573937](https://github.com/Chernikovmax/lulio-baby-tracker/actions/runs/41451573937): an obsolete event-time modal assertion clipped a night at local midnight, contradicting the full-night next-day tracker contract. The release job was skipped; no Android 1.7.1 APK was published. The tag remains unchanged.
+- Recovery removes that obsolete tracker assertion and its setup from the modal test, retaining edited-event persistence/restart acceptance. Full-night totals remain covered by the canonical tracker tests. No production behavior or signing identity changes. Package/lock metadata advances to **1.7.2**; intended Android versionCode **1007002**.
+- PWA 1.7.1 had already been published from the initial SHA before the Android failure was reported. Its owner verified all 66 public objects, service-worker adoption with unchanged synthetic diary, offline restart and concurrent two-window diaper writes. Both platforms must complete publication from the subsequent exact committed 1.7.2 source; preparation is not a completed release.
+
 ### Android 1.7.0 publication receipt (2026-10-31)
 
 - **Release:** https://github.com/Chernikovmax/lulio-baby-tracker/releases/tag/v1.7.0 — published **2026-10-31T13:27:03Z**, not draft or prerelease.

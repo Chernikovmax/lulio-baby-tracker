@@ -3,7 +3,6 @@ import { Preferences } from '@capacitor/preferences';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BreastfeedingEvent, SleepEvent } from '../../../../core/models/tracker.models';
 import { StorageService } from '../../../../core/services/storage.service';
-import { TrackerPage } from '../../../../features/tracker/tracker.page';
 import { EventTimeModalComponent } from './event-time-modal.component';
 
 const sleep: SleepEvent = {
@@ -40,18 +39,13 @@ describe('Редактирование времени сохранённых з�
     vi.useRealTimers();
   });
 
-  it('исправляет забытый сон через полночь, пересчитывает итоги и восстанавливает ту же запись после перезапуска', async () => {
+  it('исправляет забытый сон через полночь и восстанавливает ту же запись после перезапуска', async () => {
     const { storage, modal } = await setup();
-    const page = TestBed.runInInjectionContext(() => new TrackerPage());
     expect(modal.timeModel().startTime).toBe(local('2026-10-20T22:00:00Z'));
     expect(modal.timeModel().endTime).toBe(local('2026-10-21T08:00:00Z'));
-    page.selectedDate.set(new Date(2026, 9, 21).getTime());
     modal.timeModel.update(value => ({ ...value, endTime: local('2026-10-21T06:00:12.345Z') }));
     await modal.save();
     expect(modal.error()).toBe('');
-    expect(page.eventDuration(storage.events()[0])).toBe(28800);
-    const expectedTotal = Math.floor((Date.parse('2026-10-21T06:00:00Z') - Math.max(Date.parse('2026-10-20T22:00:00Z'), page.selectedDate())) / 1000);
-    expect(page.summary().nighttime).toBe(expectedTotal);
     TestBed.resetTestingModule();
     const restored = TestBed.inject(StorageService);
     await restored.ready();
