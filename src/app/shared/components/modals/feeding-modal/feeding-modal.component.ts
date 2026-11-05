@@ -49,7 +49,7 @@ type FeedingTab = 'breastfeeding' | 'bottle';
           <form id="bottle-form" class="panel" (submit)="$event.preventDefault(); saveBottle()">
             <label>Содержимое<select [formField]="bottleForm.content"><option value="breast_milk">Грудное молоко</option><option value="formula">Смесь</option><option value="water">Вода</option></select></label>
             <label>Объём, мл<input type="number" step="1" [formField]="bottleForm.volumeMl"></label>
-            <div class="chips" aria-label="Добавить объём"><ion-button type="button" fill="outline" (click)="add(30)">+30 мл</ion-button><ion-button type="button" fill="outline" (click)="add(60)">+60 мл</ion-button><ion-button type="button" fill="outline" (click)="add(90)">+90 мл</ion-button><ion-button type="button" fill="outline" (click)="add(120)">+120 мл</ion-button></div>
+            <div class="chips" aria-label="Добавить объём"><ion-button type="button" fill="outline" (click)="add(5)">+5 мл</ion-button><ion-button type="button" fill="outline" (click)="add(10)">+10 мл</ion-button><ion-button type="button" fill="outline" (click)="add(30)">+30 мл</ion-button><ion-button type="button" fill="outline" (click)="add(60)">+60 мл</ion-button><ion-button type="button" fill="outline" (click)="add(90)">+90 мл</ion-button><ion-button type="button" fill="outline" (click)="add(120)">+120 мл</ion-button></div>
             <label>Время кормления<input type="datetime-local" [formField]="bottleForm.startTime"></label>
             <label>Заметка<textarea rows="2" [formField]="bottleForm.note"></textarea></label>
           </form>
@@ -75,7 +75,7 @@ export class FeedingModalComponent {
   readonly minutesAgo = signal(0);
   readonly pending = signal(false);
   readonly error = signal('');
-  readonly bottleModel = signal({ content: 'breast_milk' as BottleContent, volumeMl: 90, startTime: localDateTime(), note: '' });
+  readonly bottleModel = signal({ content: 'formula' as BottleContent, volumeMl: 30, startTime: localDateTime(), note: '' });
   readonly bottleForm = form(this.bottleModel, path => { required(path.content); required(path.volumeMl); min(path.volumeMl, 5); max(path.volumeMl, 500); required(path.startTime); });
   readonly manualModel = signal({ startTime: localDateTime(), leftMinutes: 0, rightMinutes: 0, lastSide: 'left' as BreastSide, note: '' });
   readonly manualForm = form(this.manualModel, path => { required(path.startTime); min(path.leftMinutes, 0); min(path.rightMinutes, 0); });
@@ -104,7 +104,7 @@ export class FeedingModalComponent {
     const event: BottleEvent = { id: crypto.randomUUID(), type: 'bottle', content: value.content, volumeMl: volume, startTime: start.toISOString(), updatedAt: new Date().toISOString(), ...(value.note.trim() ? { note: value.note.trim() } : {}) };
     await this.run(async () => {
       await this.storage.saveEvent(event);
-      this.bottleForm().reset({ content: 'breast_milk', volumeMl: 90, startTime: localDateTime(), note: '' });
+      this.bottleForm().reset({ content: 'formula', volumeMl: 30, startTime: localDateTime(), note: '' });
       this.closed.emit();
     });
   }

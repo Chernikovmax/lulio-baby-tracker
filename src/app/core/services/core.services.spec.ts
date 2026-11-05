@@ -68,7 +68,7 @@ describe('Ядро трекера', () => {
     expect(page.summary().daytime).toBe(900);
     const stats = calculateStats(storage.events(), page.todayStart(), 1, Date.now());
     expect(stats.averageDaySec).toBe(900);
-    expect(stats.averageWakeSec).toBe(1200);
+    expect(stats.averageDayWakeSec).toBe(1200);
     expect(isTrackerBackup(JSON.parse(await storage.exportBackup()))).toBe(true);
     TestBed.resetTestingModule();
     ({ storage } = await setup());

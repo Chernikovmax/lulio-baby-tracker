@@ -22,7 +22,8 @@ describe('Статистика периода', () => {
     expect(stats.averageDaySec).toBe(3600 / 7);
     expect(stats.days.at(-2)?.blocks.find(block => block.night)?.end).toBe(100);
     expect(stats.days.at(-1)?.blocks.find(block => block.night)?.start).toBe(0);
-    expect(stats.averageWakeSec).toBe(3 * 3600);
+    expect(stats.averageDayWakeSec).toBe(3 * 3600);
+    expect(stats.averageNightWakeSec).toBeNull();
   });
 
   it('учитывает предшествующий периоду сон и исключает вложенные интервалы из окон бодрствования', () => {
@@ -31,7 +32,25 @@ describe('Статистика периода', () => {
       sleep('вложенный', new Date(2026, 9, 13, 21), new Date(2026, 9, 13, 22), true),
       sleep('предыдущий', new Date(2026, 9, 13, 20), new Date(2026, 9, 14, 6), true),
     ];
-    expect(calculateStats(events, today, 7, now).averageWakeSec).toBe(4 * 3600);
+    expect(calculateStats(events, today, 7, now).averageDayWakeSec).toBe(4 * 3600);
+  });
+
+  it('разделяет ночные пробуждения и паузы, утренние и вечерние дневные окна', () => {
+    const night = sleep('ночь', new Date(2026, 9, 19, 22), new Date(2026, 9, 20, 2), true);
+    night.pauses = [{ startTime: new Date(2026, 9, 20, 0).toISOString(), endTime: new Date(2026, 9, 20, 0, 10).toISOString() }];
+    const events = [
+      sleep('вечер', new Date(2026, 9, 19, 17), new Date(2026, 9, 19, 18), false),
+      night,
+      sleep('досыпание', new Date(2026, 9, 20, 2, 30), new Date(2026, 9, 20, 7), true),
+      sleep('утро', new Date(2026, 9, 20, 9), new Date(2026, 9, 20, 10), false),
+      sleep('день', new Date(2026, 9, 20, 13), new Date(2026, 9, 20, 14), false),
+    ];
+    const stats = calculateStats(events, today, 7, now);
+    expect(stats.averageDayWakeSec).toBe(3 * 3600);
+    expect(stats.averageNightWakeSec).toBe(20 * 60);
+    const nightOnly = calculateStats([night, events[2]], today, 7, now);
+    expect(nightOnly.averageDayWakeSec).toBeNull();
+    expect(nightOnly.averageNightWakeSec).toBe(20 * 60);
   });
 
   it('переключает границы периода и считает кормления, но не сцеживания или будущее', () => {
@@ -43,7 +62,8 @@ describe('Статистика периода', () => {
     ];
     const short = calculateStats(events, today, 7, now);
     expect(short.averageFeedings).toBe(0);
-    expect(short.averageWakeSec).toBeNull();
+    expect(short.averageDayWakeSec).toBeNull();
+    expect(short.averageNightWakeSec).toBeNull();
     expect(short.averageNightSec).toBeNull();
     expect(calculateStats(events, today, 14, now).averageFeedings).toBe(1 / 14);
   });

@@ -69,14 +69,22 @@ export function calculateStats(events: readonly AnyTrackerEvent[], today: number
     });
   }
   const mergedSleeps = merge(sleeps.flatMap(sleep => sleepIntervals(sleep.startTime, sleep.endTime, sleep.pauses)));
-  const gaps: number[] = [];
+  let dayWakeSec = 0, nightWakeSec = 0, dayWakeCount = 0, nightWakeCount = 0;
+  const nightIntervals = categories[1].intervals;
   for (let index = 1; index < mergedSleeps.length; index++) {
-    const sleep = mergedSleeps[index];
-    if (sleep.start >= start && sleep.start < end && sleep.start > mergedSleeps[index - 1].end) gaps.push((sleep.start - mergedSleeps[index - 1].end) / 1000);
+    const sleep = mergedSleeps[index], previous = mergedSleeps[index - 1];
+    if (sleep.start < start || sleep.start >= end || sleep.start <= previous.end) continue;
+    const gap = (sleep.start - previous.end) / 1000;
+    // Only waking between night-sleep intervals is nocturnal; bedtime and morning remain daytime.
+    const night = nightIntervals.some(interval => interval.end === previous.end) &&
+      nightIntervals.some(interval => interval.start === sleep.start);
+    if (night) { nightWakeSec += gap; nightWakeCount++; }
+    else { dayWakeSec += gap; dayWakeCount++; }
   }
   const sleepRecorded = days.some(day => day.blocks.length > 0);
   return { days,
-    averageWakeSec: gaps.length ? gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length : null,
+    averageDayWakeSec: dayWakeCount ? dayWakeSec / dayWakeCount : null,
+    averageNightWakeSec: nightWakeCount ? nightWakeSec / nightWakeCount : null,
     averageDaySec: sleepRecorded ? days.reduce((sum, day) => sum + day.daySleepSec, 0) / period : null,
     averageNightSec: sleepRecorded ? days.reduce((sum, day) => sum + day.nightSleepSec, 0) / period : null,
     averageFeedings: days.reduce((sum, day) => sum + day.feedings.length, 0) / period,

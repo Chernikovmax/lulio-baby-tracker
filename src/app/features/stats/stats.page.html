@@ -15,11 +15,11 @@
       <section aria-labelledby="summary-title">
         <h2 id="summary-title">В среднем за выбранный период</h2>
         <div class="summaries">
-          <article><h3>Окно бодрствования</h3><strong>{{ stats().averageWakeSec | durationFormat }}</strong></article>
+          <article><h3>Окно бодрствования</h3><p>Днём: <strong>{{ stats().averageDayWakeSec | durationFormat }}</strong><br>Ночью: <strong>{{ stats().averageNightWakeSec | durationFormat }}</strong></p></article>
           <article><h3>Сон за сутки</h3><strong>{{ (stats().averageDaySec === null ? null : stats().averageDaySec! + stats().averageNightSec!) | durationFormat }}</strong><p>Ночью: {{ stats().averageNightSec | durationFormat }}<br>Днём: {{ stats().averageDaySec | durationFormat }}</p></article>
           <article><h3>Кормлений в сутки</h3><strong>{{ feedingAverage() }}</strong><p>Грудь, бутылочка и прикорм</p></article>
         </div>
-        <p class="hint">Суточные средние рассчитаны за все {{ period() }} дней, включая сегодня и дни без записей. Учитываются только завершённые сны. Окна бодрствования — полные промежутки между снами, следующий из которых начался в периоде. «—» означает, что данных для расчёта нет.</p>
+        <p class="hint">Суточные средние рассчитаны за все {{ period() }} дней, включая сегодня и дни без записей. Учитываются только завершённые сны. Окна бодрствования — средняя длительность полных промежутков между снами, следующий из которых начался в периоде. Ночные окна — промежутки между ночными снами, включая паузы ночного сна; остальные — дневные, в том числе перед укладыванием на ночь и после утреннего пробуждения. «—» означает, что данных для расчёта нет.</p>
       </section>
       <section aria-labelledby="pattern-title">
         <h2 id="pattern-title">Суточный ритм · 24 часа</h2>
